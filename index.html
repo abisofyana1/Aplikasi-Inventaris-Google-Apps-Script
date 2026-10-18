@@ -949,7 +949,7 @@
   </script>
 </head>
 
-<body id="app-body" class="bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 min-h-screen " style="">
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
 
   <!-- Loader -->
   <div id="loader" class="flex items-center justify-center min-h-screen">
@@ -957,7 +957,7 @@
   </div>
 
   <!-- Login Page -->
-  <div id="login-section" class="hidden items-center justify-center min-h-screen bg-black/20">
+  <div id="login-section" class="hidden items-center justify-center min-h-screen bg-indigo-50 dark:bg-gray-900">
     <div class="w-full max-w-sm p-8 space-y-8 bg-white dark:bg-gray-800 rounded-2xl shadow-lg">
       <h2 class="text-3xl font-bold text-center text-gray-800 dark:text-white">Login</h2>
       <form id="login-form" class="mt-8 space-y-6">
@@ -1010,32 +1010,13 @@
         </p>
       </div>
   
-
-      <!-- Live Demo Quick Fill Login Helper -->
-      <div class="mt-4 p-3 bg-indigo-50 dark:bg-gray-700/60 border border-indigo-200 dark:border-gray-600 rounded-xl text-xs space-y-2">
-        <p class="font-semibold text-indigo-900 dark:text-indigo-200 flex items-center">
-          <i class="fas fa-info-circle mr-1.5 text-indigo-600 dark:text-indigo-400"></i> Akun Dummy Demo:
-        </p>
-        <div class="flex gap-2">
-          <button type="button" id="quick-login-admin" class="flex-1 py-1 px-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-center transition font-medium">
-            Role: Admin
-          </button>
-          <button type="button" id="quick-login-user" class="flex-1 py-1 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-center transition font-medium">
-            Role: User
-          </button>
-        </div>
-        <p class="text-gray-500 dark:text-gray-400 text-[11px] text-center">
-          Admin: <b>admin / admin123</b> &bull; User: <b>user / user123</b>
-        </p>
-      </div>
-  
     </div>
   </div>
 
   <!-- Main App Container -->
   <div id="app-container" class="min-h-screen flex-col hidden">
     <!-- Header dan Navigasi -->
-    <header id="main-header" class="bg-white dark:bg-gray-800 shadow-md sticky top-0 z-50">
+    <header class="bg-white dark:bg-gray-800 shadow-md sticky top-0 z-50">
       <nav class="container mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex items-center h-16">
           <!-- Left: Logo -->
@@ -1177,46 +1158,46 @@
     <main class="container mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-8 flex-grow">
       <!-- Section: Home -->
       <section id="home" class="content-section active">
-        <div class="home-welcome-card text-center max-w-3xl mx-auto mb-10">
-          <h1 class="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white">Selamat Datang di Aplikasi
+        <div class="text-center mb-12">
+          <h1 class="text-4xl font-bold text-gray-900 dark:text-white">Selamat Datang di Aplikasi
             Inventaris Demo
           </h1>
-          <p class="mt-3 text-base sm:text-lg text-gray-600 dark:text-gray-400">Pilih dasbor untuk melihat aset atau navigasi ke
+          <p class="mt-4 text-lg text-gray-600 dark:text-gray-400">Pilih dasbor untuk melihat aset atau navigasi ke
             halaman Input untuk menambahkan data baru.</p>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           <a href="#dashboard-headset"
-            class="dashboard-card-link bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md hover:shadow-xl dark:hover:bg-gray-700 transition-all flex flex-col items-center text-center">
+            class="dashboard-card-link bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md hover:shadow-xl dark:hover:bg-gray-700 transition-shadow flex flex-col items-center text-center">
             <i class="fas fa-headset text-5xl text-blue-500 mb-4"></i>
             <h3 class="text-xl font-semibold text-gray-800 dark:text-white">Dashboard Headset</h3>
             <p class="text-gray-500 dark:text-gray-400 mt-2">Lihat dan kelola data headset.</p>
           </a>
           <a href="#dashboard-laptop"
-            class="dashboard-card-link bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md hover:shadow-xl dark:hover:bg-gray-700 transition-all flex flex-col items-center text-center">
+            class="dashboard-card-link bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md hover:shadow-xl dark:hover:bg-gray-700 transition-shadow flex flex-col items-center text-center">
             <i class="fas fa-laptop text-5xl text-green-500 mb-4"></i>
             <h3 class="text-xl font-semibold text-gray-800 dark:text-white">Dashboard Laptop</h3>
             <p class="text-gray-500 dark:text-gray-400 mt-2">Lihat dan kelola data laptop.</p>
           </a>
           <a href="#dashboard-pc"
-            class="dashboard-card-link bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md hover:shadow-xl dark:hover:bg-gray-700 transition-all flex flex-col items-center text-center">
+            class="dashboard-card-link bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md hover:shadow-xl dark:hover:bg-gray-700 transition-shadow flex flex-col items-center text-center">
             <i class="fas fa-desktop text-5xl text-red-500 mb-4"></i>
             <h3 class="text-xl font-semibold text-gray-800 dark:text-white">Dashboard PC</h3>
             <p class="text-gray-500 dark:text-gray-400 mt-2">Lihat dan kelola data PC.</p>
           </a>
           <a href="#dashboard-ram"
-            class="dashboard-card-link bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md hover:shadow-xl dark:hover:bg-gray-700 transition-all flex flex-col items-center text-center">
+            class="dashboard-card-link bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md hover:shadow-xl dark:hover:bg-gray-700 transition-shadow flex flex-col items-center text-center">
             <i class="fas fa-memory text-5xl text-cyan-500 mb-4"></i>
             <h3 class="text-xl font-semibold text-gray-800 dark:text-white">Dashboard RAM</h3>
             <p class="text-gray-500 dark:text-gray-400 mt-2">Lihat dan kelola data RAM.</p>
           </a>
           <a href="#dashboard-speaker"
-            class="dashboard-card-link bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md hover:shadow-xl dark:hover:bg-gray-700 transition-all flex flex-col items-center text-center">
+            class="dashboard-card-link bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md hover:shadow-xl dark:hover:bg-gray-700 transition-shadow flex flex-col items-center text-center">
             <i class="fas fa-volume-up text-5xl text-purple-500 mb-4"></i>
             <h3 class="text-xl font-semibold text-gray-800 dark:text-white">Dashboard Speaker</h3>
             <p class="text-gray-500 dark:text-gray-400 mt-2">Lihat dan kelola data speaker.</p>
           </a>
           <a href="#dashboard-tablet"
-            class="dashboard-card-link bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md hover:shadow-xl dark:hover:bg-gray-700 transition-all flex flex-col items-center text-center">
+            class="dashboard-card-link bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md hover:shadow-xl dark:hover:bg-gray-700 transition-shadow flex flex-col items-center text-center">
             <i class="fas fa-tablet-alt text-5xl text-orange-500 mb-4"></i>
             <h3 class="text-xl font-semibold text-gray-800 dark:text-white">Dashboard Tablet</h3>
             <p class="text-gray-500 dark:text-gray-400 mt-2">Lihat dan kelola data tablet.</p>
@@ -1228,7 +1209,8 @@
       <section id="main-dashboard" class="content-section">
         <h2 class="text-3xl font-bold text-gray-800 dark:text-white mb-6">Dasbor Utama</h2>
         <!-- Stat Cards -->
-        <div id="main-dashboard-stats" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <!-- Stat Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <!-- Total Aset Card -->
           <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md flex items-start">
             <div
@@ -1368,26 +1350,6 @@
               <input type="text" id="ui-app-name" name="appName" class="form-input mt-1" placeholder="Inventaris">
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Background Aplikasi (Gambar)</label>
-              <div class="space-y-3">
-                <input type="file" id="ui-bg-image-file" accept="image/*" class="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 dark:file:bg-gray-700 dark:file:text-indigo-300 hover:file:bg-indigo-100 cursor-pointer border border-gray-300 dark:border-gray-600 rounded-lg p-1.5">
-                <p class="text-xs text-gray-500 dark:text-gray-400"><i class="fab fa-google-drive mr-1 text-blue-500"></i>File gambar akan disimpan di folder Google Drive tempat Spreadsheet tersimpan.</p>
-                
-                <!-- Pratinjau Gambar Background -->
-                <div id="ui-bg-preview-container" class="hidden border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-700/50">
-                  <div class="flex items-center space-x-4">
-                    <img id="ui-bg-preview-img" src="" alt="Preview Background" class="w-24 h-16 object-cover rounded shadow border border-gray-300 dark:border-gray-600 bg-white">
-                    <div class="flex-1">
-                      <span id="ui-bg-status-text" class="text-xs font-medium text-gray-700 dark:text-gray-300 block"></span>
-                      <button type="button" id="btn-remove-bg-image" class="mt-2 text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 flex items-center font-medium">
-                        <i class="fas fa-trash-alt mr-1"></i> Hapus Background (Gunakan Default)
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div>
               <button type="submit" class="btn btn-primary mt-4">Simpan Peraturan</button>
             </div>
           </form>
@@ -1422,7 +1384,7 @@
 
             <div class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
               <h4 class="font-semibold text-gray-800 dark:text-gray-200 mb-2">Konfigurasi Kolom (Field)</h4>
-              <p class="text-xs text-gray-500 mb-4">* Kolom ID dan Diubah Oleh ditambahkan otomatis. Kolom Status dapat dikonfigurasi opsi pilihannya di bawah.</p>
+              <p class="text-xs text-gray-500 mb-4">* Kolom ID, Status, dan Diubah Oleh akan ditambahkan otomatis.</p>
               <div id="asset-fields-setup-container" class="space-y-3">
                 <!-- Baris kolom akan ditambahkan di sini -->
               </div>
@@ -1462,7 +1424,7 @@
 
     </main>
 
-    <footer id="main-footer" class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 mt-12 py-4">
+    <footer class="bg-white dark:bg-gray-800 mt-12 py-4">
       <div class="container mx-auto text-center text-gray-500 dark:text-gray-400">
         Inventaris Demo &copy; 2024
       </div>
@@ -8854,32 +8816,6 @@ let groupedDynamicHeadsetFields = [];
     });
 </script>
 
-
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      var btnAdmin = document.getElementById('quick-login-admin');
-      var btnUser = document.getElementById('quick-login-user');
-      var inputUser = document.getElementById('username');
-      var inputPass = document.getElementById('password');
-      var loginForm = document.getElementById('login-form');
-
-      if (btnAdmin) {
-        btnAdmin.addEventListener('click', function() {
-          inputUser.value = 'admin';
-          inputPass.value = 'admin123';
-          loginForm.dispatchEvent(new Event('submit'));
-        });
-      }
-      if (btnUser) {
-        btnUser.addEventListener('click', function() {
-          inputUser.value = 'user';
-          inputPass.value = 'user123';
-          loginForm.dispatchEvent(new Event('submit'));
-        });
-      }
-    });
-  </script>
-  
 
   <script>
     document.addEventListener('DOMContentLoaded', function() {

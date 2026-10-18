@@ -5,7 +5,10 @@ function buildDemo() {
   console.log('Building standalone demo (index.html)...');
   
   const rootDir = __dirname;
-  let indexHtml = fs.readFileSync(path.join(rootDir, 'Index.html'), 'utf8');
+  const templatePath = fs.existsSync(path.join(rootDir, 'template.html'))
+    ? path.join(rootDir, 'template.html')
+    : path.join(rootDir, 'Index.html');
+  let indexHtml = fs.readFileSync(templatePath, 'utf8');
   const styleCss = fs.readFileSync(path.join(rootDir, 'Style.css.html'), 'utf8');
   const mockBackend = fs.readFileSync(path.join(rootDir, 'mock-backend.js'), 'utf8');
 
