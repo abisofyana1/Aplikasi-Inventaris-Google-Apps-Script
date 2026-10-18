@@ -1,0 +1,224 @@
+<script>
+    // --- NAVIGATION ---
+    function setupNavigation(url) {
+        if (url) webAppUrl = url;
+
+        const navLinks = document.querySelectorAll('.nav-link');
+        const sections = document.querySelectorAll('.content-section');
+        const sidebarOverlay = document.getElementById('sidebar-overlay'); // Mungkin null di desktop, tidak masalah
+        const sidebar = document.getElementById('sidebar'); // Mungkin null
+        const mobileMenuBtn = document.getElementById('mobile-menu-button');
+        const mobileMenu = document.getElementById('mobile-menu');
+
+        // Helper untuk update link agar punya dataset target yang benar
+        navLinks.forEach(link => {
+            const href = link.getAttribute('href');
+            if (href && href.startsWith('#')) {
+                link.dataset.target = href.substring(1);
+            }
+        });
+
+        function activateSection(targetId) {
+            let sectionId = targetId;
+            let dashboardType = null;
+
+            // Deteksi jika target adalah dashboard spesifik (misal #dashboard-pc)
+            if (targetId.startsWith('dashboard-')) {
+                sectionId = 'dashboard-container';
+                dashboardType = targetId.replace('dashboard-', '');
+            }
+
+            // 1. Tampilkan Section yang sesuai, sembunyikan yang lain
+            sections.forEach(section => {
+                // Cocokkan ID section, ATAU jika section adalah container dashboard
+                if (section.id === sectionId || (section.id === 'dashboard-container' && targetId.startsWith('dashboard-'))) {
+                    section.classList.remove('hidden');
+                    section.classList.add('active'); // Tambah class active untuk animasi jika ada
+                } else {
+                    section.classList.add('hidden');
+                    section.classList.remove('active');
+                }
+            });
+
+            // 2. Update Style Menu (Active State)
+            navLinks.forEach(link => {
+                const linkTarget = link.dataset.target;
+                // Cek apakah link ini mengarah ke target aktif
+                // Khusus dropdown "Dashboard Aset", kita aktifkan jika URL diawali 'dashboard-'
+                const isDashboardGroup = link.id === 'dashboard-dropdown-trigger' && targetId.startsWith('dashboard-');
+                // Tambahan: Highlight menu "Manage" jika sub-menu manajemen aktif
+                const isManageGroup = link.id === 'manage-dropdown-trigger' && targetId.startsWith('manage-');
+                const isExactMatch = linkTarget === targetId;
+
+                if (isExactMatch || isDashboardGroup || isManageGroup) {
+                    link.classList.add('bg-gray-100', 'dark:bg-gray-700', 'text-indigo-600', 'dark:text-white', 'font-semibold');
+                    link.classList.remove('text-gray-700', 'dark:text-gray-300');
+                } else {
+                    link.classList.remove('bg-gray-100', 'dark:bg-gray-700', 'text-indigo-600', 'dark:text-white', 'font-semibold');
+                    link.classList.add('text-gray-700', 'dark:text-gray-300');
+                }
+            });
+
+            // 3. Muat Data Dashboard (Lazy Load)
+            if (targetId === 'main-dashboard') {
+                if (window.loadMainDashboard) window.loadMainDashboard();
+            } else if (dashboardType) {
+                const container = document.getElementById('dashboard-container');
+                let targetType = decodeURIComponent(dashboardType);
+
+                // Case-insensitive lookup for matching sheet name
+                if (allData) {
+                    const exactMatch = Object.keys(allData).find(k => k.toLowerCase() === targetType.toLowerCase());
+                    if (exactMatch) targetType = exactMatch;
+                }
+
+                if (window.loadDashboard) window.loadDashboard(targetType, container);
+            }
+        }
+
+        
+        window.updateNavActiveState = function(hash) {
+            hash = hash || window.location.hash.substring(1) || 'home';
+            
+            // Remove active state from all
+            document.querySelectorAll('.nav-link').forEach(el => {
+                el.classList.remove('active-nav');
+            });
+            
+            // Add to exact match
+            const exactMatches = document.querySelectorAll('.nav-link[href="#' + hash + '"]');
+            exactMatches.forEach(el => el.classList.add('active-nav'));
+            
+            // Add to parent if necessary
+            if (hash.startsWith('dashboard-')) {
+                const dt = document.getElementById('dashboard-dropdown-trigger');
+                if (dt) dt.classList.add('active-nav');
+            } else if (hash.startsWith('manage-')) {
+                const mt1 = document.getElementById('manage-dropdown-trigger');
+                const mt2 = document.getElementById('mobile-manage-trigger');
+                if (mt1) mt1.classList.add('active-nav');
+                if (mt2) mt2.classList.add('active-nav');
+            }
+        };
+        
+        function handleHashChange() {
+            let hash = window.location.hash.substring(1);
+            if (!hash) {
+                // RESTORE: Ambil dari localStorage jika URL kosong (setelah reload)
+                const savedHash = localStorage.getItem('LAST_VIEW_HASH');
+                if (savedHash) {
+                    window.location.hash = '#' + savedHash;
+                    return; // window navigation will trigger hashchange again
+                }
+                hash = 'home';
+            }
+            
+            // SAVE: Simpan ke localStorage untuk reload berikutnya
+            localStorage.setItem('LAST_VIEW_HASH', hash);
+            
+            activateSection(hash);
+
+            // Tutup semua menu saat navigasi terjadi
+            if (mobileMenu && !mobileMenu.classList.contains('hidden')) {
+                mobileMenu.classList.add('hidden');
+            }
+            const dashboardDropdownMenu = document.getElementById('dashboard-dropdown-menu');
+            if (dashboardDropdownMenu) dashboardDropdownMenu.classList.add('hidden');
+
+            const manageDropdownMenu = document.getElementById('manage-dropdown-menu');
+            if (manageDropdownMenu) manageDropdownMenu.classList.add('hidden');
+
+            const mobileManageMenu = document.getElementById('mobile-manage-menu');
+            if (mobileManageMenu) mobileManageMenu.classList.add('hidden');
+            window.updateNavActiveState(hash);
+        }
+
+        // Listen perubahan URL (#hash)
+        window.removeEventListener('hashchange', handleHashChange);
+        window.addEventListener('hashchange', handleHashChange);
+
+        // Setup Mobile Menu Toggle
+        if (mobileMenuBtn && mobileMenu) {
+            mobileMenuBtn.onclick = (e) => {
+                e.stopPropagation();
+                mobileMenu.classList.toggle('hidden');
+            };
+        }
+
+        // Setup Dropdown Dashboard (Desktop)
+        const dashboardDropdownTrigger = document.getElementById('dashboard-dropdown-trigger');
+        const dashboardDropdownMenu = document.getElementById('dashboard-dropdown-menu');
+
+        if (dashboardDropdownTrigger && dashboardDropdownMenu) {
+            dashboardDropdownTrigger.onclick = (e) => {
+                e.stopPropagation();
+                dashboardDropdownMenu.classList.toggle('hidden');
+                const manageDropdownMenu = document.getElementById('manage-dropdown-menu');
+                if (manageDropdownMenu) manageDropdownMenu.classList.add('hidden');
+            };
+
+            // Mencegah klik di dalam menu menutup dirinya sendiri sebelum navigasi
+            dashboardDropdownMenu.onclick = (e) => e.stopPropagation();
+        }
+
+        // Setup Dropdown Manage (Desktop)
+        const manageDropdownTrigger = document.getElementById('manage-dropdown-trigger');
+        const manageDropdownMenu = document.getElementById('manage-dropdown-menu');
+        const manageParent = document.getElementById('nav-manage-parent');
+
+        if (manageDropdownTrigger && manageDropdownMenu) {
+            manageDropdownTrigger.onclick = (e) => {
+                e.stopPropagation();
+                manageDropdownMenu.classList.toggle('hidden');
+                if (dashboardDropdownMenu) dashboardDropdownMenu.classList.add('hidden');
+            };
+
+            // Mencegah klik di dalam menu menutup dirinya sendiri sebelum navigasi
+            manageDropdownMenu.onclick = (e) => e.stopPropagation();
+
+            // Interaksi Hover (Desktop) dengan Delay Kecil agar Stabil
+            if (manageParent) {
+                let manageHoverTimeout;
+                manageParent.onmouseenter = () => {
+                    clearTimeout(manageHoverTimeout);
+                    manageDropdownMenu.classList.remove('hidden');
+                };
+                manageParent.onmouseleave = () => {
+                    manageHoverTimeout = setTimeout(() => {
+                        manageDropdownMenu.classList.add('hidden');
+                    }, 200); // 200ms delay agar tidak hilang saat pindah kursor
+                };
+            }
+        }
+
+        // Tutup semua dropdown jika klik di luar
+        window.onclick = (e) => {
+            if (dashboardDropdownMenu) dashboardDropdownMenu.classList.add('hidden');
+            if (manageDropdownMenu) manageDropdownMenu.classList.add('hidden');
+            if (mobileMenu) mobileMenu.classList.add('hidden');
+        };
+
+        // Setup Mobile Manage Toggle
+        const mobileManageTrigger = document.getElementById('mobile-manage-trigger');
+        const mobileManageMenu = document.getElementById('mobile-manage-menu');
+        if (mobileManageTrigger && mobileManageMenu) {
+            mobileManageTrigger.onclick = (e) => {
+                e.stopPropagation();
+                mobileManageMenu.classList.toggle('hidden');
+                const icon = mobileManageTrigger.querySelector('i');
+                if (icon) {
+                    icon.classList.toggle('fa-chevron-down');
+                    icon.classList.toggle('fa-chevron-up');
+                }
+            };
+        }
+
+        // Jalankan sekali saat init
+        handleHashChange();
+
+        // Return fungsi navigasi manual jika dibutuhkan
+        return (targetHash) => {
+            window.location.hash = targetHash;
+        };
+    }
+</script>

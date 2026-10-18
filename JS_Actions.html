@@ -1,0 +1,1094 @@
+<script>
+    // --- ACTIONS (View, Delete, Export) ---
+    const modalOverlay = document.getElementById('action-modal');
+    const modalTitle = document.getElementById('modal-title');
+    const modalBody = document.getElementById('modal-body');
+    const modalFooter = document.getElementById('modal-footer');
+
+    const modalClose = document.getElementById('modal-close');
+
+    function showActionModal() {
+        modalOverlay.classList.add('active');
+    }
+
+    function hideActionModal() {
+        modalOverlay.classList.remove('active');
+    }
+
+    if (modalClose) {
+        modalClose.addEventListener('click', hideActionModal);
+    }
+
+    modalOverlay.addEventListener('click', (e) => {
+        if (e.target === modalOverlay) {
+            hideActionModal();
+        }
+    });
+
+    window.hideActionModal = hideActionModal;
+
+    function renderAssetHistory(historyData) {
+        if (!historyData || historyData.length === 0) {
+            return '<p class="text-sm text-gray-500 italic">Belum ada riwayat aktivitas.</p>';
+        }
+
+        return `
+          <div class="mt-4">
+              <h4 class="font-bold text-gray-700 dark:text-gray-300 mb-2">Riwayat Aktivitas</h4>
+              <ul class="border-l-2 border-gray-200 dark:border-gray-600 ml-2 space-y-4">
+                  ${historyData.map(log => `
+                      <li class="relative pl-4">
+                          <div class="absolute -left-1.5 top-1.5 w-3 h-3 bg-gray-200 rounded-full border border-white dark:border-gray-900 dark:bg-gray-700"></div>
+                          <time class="mb-1 text-xs font-normal text-gray-400 dark:text-gray-500">${new Date(log.timestamp).toLocaleString()}</time>
+                          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">${log.action}</h3>
+                          <p class="text-xs font-normal text-gray-500 dark:text-gray-400">Oleh: ${log.user} <br> Detail: ${log.details}</p>
+                      </li>
+                  `).join('')}
+              </ul>
+          </div>
+      `;
+    }
+
+    function handleViewAction(assetType, data) {
+        modalTitle.textContent = `Detail Aset: ${assetType} (${data.ID})`;
+
+        let detailsHtml = '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">';
+        
+        // Ambil konfigurasi urutan field terbaru
+        const config = getExportConfig(assetType);
+        let orderedHeaders = [];
+        
+        if (config) {
+            orderedHeaders = config.map(col => typeof col === 'string' ? col : col.header);
+            
+            // Pastikan field yang ada di data tapi tidak ada di config tetap masuk (di akhir)
+            for (const key of Object.keys(data)) {
+                if (!orderedHeaders.includes(key)) {
+                    orderedHeaders.push(key);
+                }
+            }
+        } else {
+            orderedHeaders = Object.keys(data);
+        }
+
+        for (const key of orderedHeaders) {
+            if (['ID', 'RowIndex', 'SheetName'].includes(key)) continue;
+            
+            // Ambil value berdasarkan key yang sudah diurutkan
+            const value = data[key];
+            
+            detailsHtml += `
+              <div class="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                  <span class="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">${key}</span>
+                  <span class="block text-gray-800 dark:text-gray-200 mt-1 break-words">${value || '-'}</span>
+              </div>
+          `;
+        }
+        detailsHtml += '</div>';
+
+        // Generate QR Data with all fields ordered by exportConfig
+        let qrLines = [];
+        
+        if (config) {
+            config.forEach(col => {
+                let key, header;
+                if (typeof col === 'string') {
+                    key = col;
+                    header = col;
+                } else {
+                    key = col.key;
+                    header = col.header;
+                }
+                const val = data[key] || data[header];
+                if (val !== undefined && val !== null && val !== "") {
+                    qrLines.push(`${header}: ${val}`);
+                }
+            });
+        } else {
+            // Fallback to all fields if no config
+            qrLines.push(`ID: ${data.ID}`);
+            for (const [key, value] of Object.entries(data)) {
+                if (['ID', 'RowIndex', 'SheetName'].includes(key)) continue;
+                if (value) qrLines.push(`${key}: ${value}`);
+            }
+        }
+        const qrData = qrLines.join('\n');
+
+        const typeNumber = 0; // Automatic type number
+        const errorCorrectionLevel = 'L';
+        const qr = qrcode(typeNumber, errorCorrectionLevel);
+        qr.addData(qrData);
+        qr.make();
+        const qrImgTag = qr.createImgTag(5);
+
+        detailsHtml += `
+          <div class="mt-6 flex flex-col items-center">
+              <div class="bg-white p-2 rounded-lg shadow-sm border border-gray-200">
+                  ${qrImgTag}
+              </div>
+              <span class="text-xs text-gray-500 mt-2">QR Code: ${data.ID}</span>
+              <button id="download-qr" class="btn btn-secondary text-xs mt-2"><i class="fas fa-download mr-1"></i>Unduh QR</button>
+          </div>
+      `;
+
+        detailsHtml += `<div id="asset-history-loading" class="mt-4 text-center"><i class="fas fa-spinner fa-spin"></i> Memuat riwayat...</div><div id="asset-history-container"></div>`;
+
+        modalBody.innerHTML = detailsHtml;
+        modalFooter.innerHTML = `<button class="btn btn-secondary" onclick="hideActionModal()">Tutup</button>`;
+
+        setTimeout(() => {
+            const dlBtn = document.getElementById('download-qr');
+            if (dlBtn) {
+                dlBtn.addEventListener('click', () => {
+                    const img = modalBody.querySelector('img');
+                    if (img) {
+                        const link = document.createElement('a');
+                        link.href = img.src;
+                        link.download = `QR_${assetType}_${data.ID}.gif`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    }
+                });
+            }
+        }, 0);
+
+        showActionModal();
+
+        window.google.script.run
+            .withSuccessHandler(history => {
+                const historyContainer = document.getElementById('asset-history-container');
+                const historyLoading = document.getElementById('asset-history-loading');
+                if (historyLoading) historyLoading.remove();
+                if (historyContainer) {
+                    historyContainer.innerHTML = renderAssetHistory(history);
+                }
+            })
+            .withFailureHandler(err => {
+                const historyLoading = document.getElementById('asset-history-loading');
+                if (historyLoading) historyLoading.innerText = "Gagal memuat riwayat.";
+            })
+            .getAssetHistory(data.ID);
+    }
+
+    function handleEditAction(assetType, record) {
+        modalTitle.textContent = `Edit Aset: ${assetType} (${record.ID})`;
+
+        let formHtml = `
+            <form id="modal-edit-form" class="space-y-4">
+                <input type="hidden" name="assetType" value="${assetType}">
+                <input type="hidden" name="editId" value="${record.ID}">
+                ${getFormFieldsHtml(assetType).html}
+            </form>
+        `;
+
+        modalBody.innerHTML = formHtml;
+        modalFooter.innerHTML = `
+            <button class="btn btn-secondary mr-2" onclick="hideActionModal()">Batal</button>
+            <button class="btn btn-primary" id="modal-save-btn">Simpan Perubahan</button>
+        `;
+
+        // Wait for DOM to render templates
+        setTimeout(() => {
+            const form = document.getElementById('modal-edit-form');
+            if (!form) return;
+
+            // Fill the form
+            Object.keys(record).forEach(key => {
+                if (['RowIndex', 'SheetName'].includes(key)) return;
+                const inputs = form.querySelectorAll('input, select, textarea');
+                inputs.forEach(input => {
+                    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    const normalizedName = input.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+                    // Special mapping for SN
+                    if (normalizedKey === 'serialnumber' && normalizedName === 'sn') input.value = record[key];
+                    if (normalizedKey === 'sn' && normalizedName === 'serialnumber') input.value = record[key];
+
+                    if (normalizedKey === normalizedName) {
+                        if (input.type === 'date' && record[key]) {
+                            const d = new Date(record[key]);
+                            if (!isNaN(d)) {
+                                input.value = d.toISOString().split('T')[0];
+                            }
+                        } else {
+                            input.value = record[key] || '';
+                        }
+                    }
+                });
+            });
+
+            // Capture initial state for change detection
+            const getFormData = () => Object.fromEntries(new FormData(form).entries());
+            const initialData = JSON.stringify(getFormData());
+
+            // Handle Save Button click in modal
+            document.getElementById('modal-save-btn').onclick = () => {
+                const currentData = JSON.stringify(getFormData());
+
+                // If no changes were made, act like "Cancel"
+                if (initialData === currentData) {
+                    hideActionModal();
+                    showToast('Tidak ada perubahan disimpan.', 'info');
+                    return;
+                }
+
+                const btn = document.getElementById('modal-save-btn');
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Menyimpan...';
+
+                const formObject = getFormData();
+
+                window.google.script.run
+                    .withSuccessHandler(res => {
+                        hideActionModal();
+                        showToast('Berhasil diperbarui!', 'success');
+                        // Invalidate cache and reload
+                        if (allData[assetType]) delete allData[assetType];
+                        if (window.loadDashboard) window.loadDashboard(assetType, document.getElementById('dashboard-container'));
+                    })
+                    .withFailureHandler(err => {
+                        showToast('Gagal update: ' + err.message, 'error');
+                        btn.disabled = false;
+                        btn.textContent = 'Simpan Perubahan';
+                    })
+                    .updateData(assetType, record.ID, formObject, currentUser);
+            };
+        }, 50);
+
+        showActionModal();
+    }
+
+    function handleEditDateAction(assetType, data, targetField) {
+        const status = String(data.Status || '').toLowerCase();
+        if (status.includes('tersedia') || status.includes('rusak')) {
+            const fieldLabel = targetField === 'loan' ? 'Tgl Peminjaman' : 'Tgl Pengembalian';
+            showConfirm(
+                'Akses Dibatasi',
+                `${fieldLabel} tidak dapat diubah ketika status barang ${status}.`,
+                'Mengerti',
+                false, // Not danger
+                true  // Hide cancel (Alert Mode)
+            );
+            return;
+        }
+
+        modalTitle.textContent = `Update Tanggal: ${assetType} - ${data.Nama || data.ID}`;
+
+        // Helper to format date for datetime-local (YYYY-MM-DDTHH:mm)
+        const formatForInput = (dateStr) => {
+            if (!dateStr) return '';
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return '';
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const hours = String(d.getHours()).padStart(2, '0');
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            return `${year}-${month}-${day}T${hours}:${minutes}`;
+        };
+
+        const loanDate = formatForInput(data['Tgl Peminjaman']);
+        const returnDate = formatForInput(data['Tgl Pengembalian']);
+
+        const showLoan = targetField === 'loan' || !targetField;
+        const showReturn = targetField === 'return' || !targetField;
+
+        modalBody.innerHTML = `
+        <div class="form-grid">
+            <input type="hidden" id="edit-date-id" value="${data.ID}">
+            <input type="hidden" id="edit-date-type" value="${assetType}">
+            <div class="${showLoan ? '' : 'hidden'}">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Tanggal Peminjaman & Jam</label>
+                <input type="datetime-local" id="edit-loan-date" class="form-input mt-1" value="${loanDate}">
+            </div>
+            <div class="${showReturn ? '' : 'hidden'}">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Tanggal Pengembalian & Jam</label>
+                <input type="datetime-local" id="edit-return-date" class="form-input mt-1" value="${returnDate}">
+                <p class="text-xs text-gray-500 mt-1">Kosongkan jika belum dikembalikan.</p>
+            </div>
+        </div>
+    `;
+
+        modalFooter.innerHTML = `
+        <button class="btn btn-secondary" onclick="hideActionModal()">Batal</button>
+        <button class="btn btn-primary" id="save-date-btn">Simpan</button>
+    `;
+
+        showActionModal();
+
+        document.getElementById('save-date-btn').addEventListener('click', () => {
+            const id = document.getElementById('edit-date-id').value;
+            const type = document.getElementById('edit-date-type').value;
+            const newLoanDate = document.getElementById('edit-loan-date').value;
+            const newReturnDate = document.getElementById('edit-return-date').value;
+
+            const btn = document.getElementById('save-date-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            window.google.script.run
+                .withSuccessHandler(res => {
+                    hideActionModal();
+                    showToast('Tanggal berhasil diperbarui.');
+                    if (window.loadMainDashboard) window.loadMainDashboard();
+                    if (window.loadDashboard) window.loadDashboard(type, document.getElementById('dashboard-container'));
+                })
+                .withFailureHandler(err => {
+                    showToast('Gagal update tanggal: ' + err.message, 'error');
+                    btn.disabled = false;
+                    btn.textContent = 'Simpan';
+                })
+                .updateLoanDate(type, id, newLoanDate, newReturnDate, currentUser);
+        });
+    }
+
+    async function handleDeleteAction(assetType, id, user) {
+        const confirmed = await showConfirm(
+            'Konfirmasi Hapus',
+            `Apakah Anda yakin ingin menghapus aset dengan ID ${id}? Tindakan ini tidak dapat dibatalkan.`,
+            'Ya, Hapus',
+            true
+        );
+
+        if (confirmed) {
+            window.google.script.run
+                .withSuccessHandler(res => {
+                    showToast(`Aset ${id} berhasil dihapus.`, 'success');
+                    const container = document.getElementById('dashboard-container');
+                    if (allData[assetType]) {
+                        if (Array.isArray(allData[assetType])) {
+                            allData[assetType] = allData[assetType].filter(item => item.ID !== id);
+                        } else if (Array.isArray(allData[assetType].rows)) {
+                            allData[assetType].rows = allData[assetType].rows.filter(item => item.ID !== id);
+                        }
+                    }
+                    if (container && window.loadDashboard) loadDashboard(assetType, container);
+                })
+                .withFailureHandler(err => {
+                    showToast('Gagal menghapus aset: ' + err.message, 'error');
+                })
+                .deleteData(assetType, id, user);
+        }
+    }
+
+    const exportConfig = {
+        Headset: [
+            'ID', 'Tgl Peminjaman', 'Tgl Pengembalian', 'Nama', 'NPP', 'Nama Onair', 'SN Headset',
+            'Type', 'Jenis', 'Merek', 'Kondisi', 'Posisi Jabatan', 'Site', 'Team Leader',
+            'Senior Staff', 'Keterangan', 'Section Head', 'Layanan', 'Diubah Oleh', 'Status'
+        ],
+        Laptop: [
+            'ID', 'Tgl Peminjaman', 'Tgl Pengembalian', 'Merek', 'Serial Number', 'Hostname',
+            { key: 'Operating System', header: 'OS' }, { key: 'Nomor Induk Barang', header: 'NIB' },
+            'Nama', 'Keperluan', 'Keterangan', 'QTY', 'Diubah Oleh', 'Petugas', 'Status'
+        ],
+        PC: [
+            'ID', 'IP Address', 'Serial Number', 'RAM', 'Hostname', 'NIB PC', 'Serial Number Monitor',
+            'NIB Monitor', 'Operating System', 'Type PC', 'Extension', 'HQ', 'Nama', 'Layanan',
+            'Type Keyboard', 'Type Mouse', 'Lantai', 'Status'
+        ],
+        RAM: [
+            'ID', 'Merk', { key: 'Serial Number', header: 'SN' }, 'Type Ram', 'Jenis Ram', 'Size',
+            'Tgl Pengadaan', 'Layanan', 'Pengguna', 'SN PC', 'Status'
+        ],
+        Speaker: [
+            'ID', 'Tgl Peminjaman', 'Tgl Pengembalian', 'Nama', 'QTY', 'Merek', 'Serial Number',
+            'Keperluan', 'Keterangan', 'Diubah Oleh', 'Petugas', 'Status'
+        ],
+        Tablet: [
+            'ID', 'Nama', 'Merek', 'Versi', 'Model', { key: 'Serial Number', header: 'SN' }, 'RAM',
+            'Memory', 'IMEI 1', 'IMEI 2', { key: 'Tahun Rilis', header: 'Thn Rilis' }, 'Tgl Pembelian',
+            'Keperluan', 'QTY', 'Layanan', 'Keterangan', 'Petugas', 'Status', 'Tgl Peminjaman',
+            'Tgl Pengembalian', 'Diubah Oleh'
+        ]
+    };
+
+    function getExportConfig(assetType) {
+        if (allData && allData[assetType] && allData[assetType].headers) {
+            const headers = allData[assetType].headers;
+            const config = allData[assetType].config;
+            
+            if (config && config.length > 0) {
+                const systemStart = ["ID", "Tgl Peminjaman", "Tgl Pengembalian"];
+                const configOrder = config.map(c => c.name);
+                
+                const orderedHeaders = [];
+                
+                systemStart.forEach(h => {
+                    if (headers.includes(h)) orderedHeaders.push(h);
+                });
+                
+                configOrder.forEach(h => {
+                    if (headers.includes(h) && !orderedHeaders.includes(h)) {
+                        orderedHeaders.push(h);
+                    }
+                });
+                
+                headers.forEach(h => {
+                    if (!orderedHeaders.includes(h)) {
+                        orderedHeaders.push(h);
+                    }
+                });
+                
+                return orderedHeaders;
+            }
+            
+            return headers;
+        }
+        if (exportConfig[assetType]) return exportConfig[assetType];
+        return null;
+    }
+
+    function setBtnExportLoading(btn, isLoading) {
+        if (!btn) return;
+        if (isLoading) {
+            btn.dataset.oldHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Loading...';
+        } else {
+            btn.disabled = false;
+            btn.innerHTML = btn.dataset.oldHtml || btn.innerHTML;
+        }
+    }
+
+    function setBtnExportSuccess(btn) {
+        if (!btn) return;
+        const oldHtml = btn.dataset.oldHtml || btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check-circle mr-2 text-green-500"></i>Berhasil';
+        setTimeout(() => {
+            btn.innerHTML = oldHtml;
+        }, 3000);
+    }
+
+    function handleExportToExcel(assetType, btn = null) {
+        setBtnExportLoading(btn, true);
+        const rawData = allData[assetType];
+        if (!rawData || rawData.length === 0) {
+            showToast('Tidak ada data untuk diekspor.', 'error');
+            return;
+        }
+
+        const config = getExportConfig(assetType);
+        
+        let dataToExport = rawData;
+        if (typeof currentDashboardStates !== 'undefined' && currentDashboardStates[assetType] && currentDashboardStates[assetType].filteredData) {
+            dataToExport = currentDashboardStates[assetType].filteredData;
+        }
+
+        if (config) {
+            dataToExport = dataToExport.map(item => {
+                const orderedItem = {};
+                config.forEach(col => {
+                    let key, header;
+                    if (typeof col === 'string') {
+                        key = col;
+                        header = col;
+                    } else {
+                        key = col.key;
+                        header = col.header;
+                    }
+
+                    // Strict check to preserve '0', false, etc.
+                    let val = item[key];
+                    if (val === undefined || val === null) {
+                        val = item[header];
+                    }
+
+                    orderedItem[header] = (val !== undefined && val !== null) ? val : '';
+                });
+                return orderedItem;
+            });
+        }
+
+        const ws = XLSX.utils.json_to_sheet(dataToExport, { skipHeader: false });
+
+        // --- Apply Styles & Fix Data Types ---
+        const range = XLSX.utils.decode_range(ws['!ref']);
+
+        // Styles
+        const borderStyle = {
+            top: { style: "thin", color: { auto: 1 } },
+            bottom: { style: "thin", color: { auto: 1 } },
+            left: { style: "thin", color: { auto: 1 } },
+            right: { style: "thin", color: { auto: 1 } }
+        };
+        const headerStyle = {
+            fill: { fgColor: { rgb: "4CAF50" } }, // Green
+            font: { bold: true, color: { rgb: "FFFFFF" } }, // White text
+            border: borderStyle,
+            alignment: { horizontal: "center", vertical: "center", wrapText: true }
+        };
+        const cellStyle = {
+            border: borderStyle,
+            alignment: { vertical: "center", horizontal: "left", wrapText: true } // Changed to Left align for data
+        };
+
+        // Columns that MUST be treated as Text/String to preserve formatting (dots, leading zeros)
+        const textColumns = ['ID', 'IP Address', 'Serial Number', 'NIB', 'SN', 'OS', 'Keterangan', 'NIB PC', 'NIB Monitor', 'SN Headset', 'SN PC', 'IMEI 1', 'IMEI 2'];
+
+        // Get headers first to map column index to name
+        const colHeaders = {};
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+            const cellAddress = XLSX.utils.encode_cell({ r: 0, c: C });
+            if (ws[cellAddress]) {
+                colHeaders[C] = ws[cellAddress].v;
+            }
+        }
+
+        for (let R = range.s.r; R <= range.e.r; ++R) {
+            for (let C = range.s.c; C <= range.e.c; ++C) {
+                const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+                if (!ws[cellAddress]) continue;
+
+                if (R === 0) { // Header Row
+                    ws[cellAddress].s = headerStyle;
+                } else {
+                    ws[cellAddress].s = cellStyle;
+
+                    // Force String Type for specific columns to prevent auto-formatting (like IP dots removal)
+                    const colName = colHeaders[C];
+                    if (textColumns.includes(colName) || textColumns.some(tc => colName && colName.includes(tc))) {
+                        ws[cellAddress].t = 's'; // Force String
+                        ws[cellAddress].z = '@'; // Excel Text Format
+                        ws[cellAddress].v = String(ws[cellAddress].v); // Ensure value is string
+                    }
+                }
+            }
+        }
+
+        // Auto-width columns
+        const colWidths = [];
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+            let maxLen = 10;
+            for (let R = range.s.r; R <= range.e.r; ++R) {
+                const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+                if (ws[cellAddress] && ws[cellAddress].v) {
+                    const val = String(ws[cellAddress].v);
+                    const lines = val.split('\n').length; // account for newlines
+                    const len = val.length / lines; // rough avg width
+                    if (len > maxLen) maxLen = len;
+                }
+            }
+            colWidths.push({ wch: Math.min(maxLen + 2, 50) }); // Cap width
+        }
+        ws['!cols'] = colWidths;
+
+        // Uniform Row Heights
+        const rowHeights = [];
+        for (let R = range.s.r; R <= range.e.r; ++R) {
+            if (R === 0) {
+                rowHeights.push({ hpx: 30 });
+            } else {
+                rowHeights.push({ hpx: 17 }); // Updated to 17px as requested
+            }
+        }
+        ws['!rows'] = rowHeights;
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, assetType);
+
+        const fileName = `Export_${assetType}_${getTodayDate()}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+        setBtnExportLoading(btn, false);
+        setBtnExportSuccess(btn);
+    }
+
+    function handleExportLogAktivitas(assetType, btn = null) {
+        setBtnExportLoading(btn, true);
+        showToast(`Mengambil data log ${assetType}...`, 'info');
+        window.google.script.run
+            .withSuccessHandler(logs => {
+                if (!logs || logs.length === 0) {
+                    showToast(`Tidak ada riwayat aktivitas untuk ${assetType}.`, 'warning');
+                    setBtnExportLoading(btn, false);
+                    return;
+                }
+
+                const dataToExport = logs.map(log => ({
+                    'Timestamp': log.Timestamp ? log.Timestamp.replace(' ', ' | ') : '',
+                    'Username': log.Username,
+                    'Aksi': log.Aksi,
+                    'Tipe Aset': log['Tipe Aset'],
+                    'ID Aset': log['ID Aset'],
+                    'Detail': log.Detail
+                }));
+
+                const ws = XLSX.utils.json_to_sheet(dataToExport);
+
+                // Styling
+                const range = XLSX.utils.decode_range(ws['!ref']);
+                const borderStyle = {
+                    top: { style: "thin", color: { auto: 1 } },
+                    bottom: { style: "thin", color: { auto: 1 } },
+                    left: { style: "thin", color: { auto: 1 } },
+                    right: { style: "thin", color: { auto: 1 } }
+                };
+                const headerStyle = {
+                    fill: { fgColor: { rgb: "3B82F6" } }, // Blue-500
+                    font: { bold: true, color: { rgb: "FFFFFF" } },
+                    alignment: { horizontal: "center", vertical: "center" },
+                    border: borderStyle
+                };
+                const cellStyle = {
+                    border: borderStyle,
+                    alignment: { vertical: "center", horizontal: "left", wrapText: true }
+                };
+
+                for (let R = range.s.r; R <= range.e.r; ++R) {
+                    for (let C = range.s.c; C <= range.e.c; ++C) {
+                        const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+                        if (!ws[cellAddress]) continue;
+
+                        if (R === 0) {
+                            ws[cellAddress].s = headerStyle;
+                        } else {
+                            ws[cellAddress].s = cellStyle;
+                        }
+                    }
+                }
+
+                // Auto-width
+                const colWidths = [];
+                for (let C = range.s.c; C <= range.e.c; ++C) {
+                    let maxLen = 10;
+                    for (let R = range.s.r; R <= range.e.r; ++R) {
+                        const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+                        if (ws[cellAddress] && ws[cellAddress].v) {
+                            const val = String(ws[cellAddress].v);
+                            const lines = val.split('\n');
+                            lines.forEach(line => {
+                                if (line.length > maxLen) maxLen = line.length;
+                            });
+                        }
+                    }
+                    colWidths.push({ wch: Math.min(maxLen + 4, 100) });
+                }
+                ws['!cols'] = colWidths;
+
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "LogAktivitas");
+
+                const fileName = `LogAktivitas_${assetType}_${getTodayDate()}.xlsx`;
+                XLSX.writeFile(wb, fileName);
+                showToast('Log Aktivitas berhasil diekspor.', 'success');
+                setBtnExportLoading(btn, false);
+                setBtnExportSuccess(btn);
+            })
+            .withFailureHandler(err => {
+                showToast('Gagal ekspor log: ' + err.message, 'error');
+                setBtnExportLoading(btn, false);
+            })
+            .getLogsForAssetType(assetType);
+    }
+
+    // --- TEMPLATE DOWNLOAD LOGIC ---
+    function handleDownloadTemplate(assetType, btn = null) {
+        setBtnExportLoading(btn, true);
+
+        // 1. Tentukan Header Array berdasarkan konfigurasi dinamis form terbaru
+        let headerArray = ['ID']; // ID selalu ada di kolom pertama untuk keperluan update data
+        let dynamicConfig = (allData && allData[assetType] && allData[assetType].config) ? allData[assetType].config : [];
+        let hasStatus = false;
+        
+        const dynamicOptions = {};
+
+        if (dynamicConfig.length > 0) {
+            dynamicConfig.forEach(field => {
+                headerArray.push(field.name);
+                if (field.name.toLowerCase() === 'status') hasStatus = true;
+                
+                // Kumpulkan opsi dropdown dari konfigurasi terbaru
+                if (field.type === 'dropdown' && field.options) {
+                    dynamicOptions[field.name] = field.options.split(',').map(o => o.trim());
+                }
+            });
+        } else {
+            // Fallback ke header Google Sheet jika config UI tidak ada
+            const sheetHeaders = (allData && allData[assetType] && allData[assetType].headers) ? allData[assetType].headers : getExportConfig(assetType);
+            if (sheetHeaders) {
+                sheetHeaders.forEach(h => {
+                    const hName = typeof h === 'string' ? h : h.header;
+                    if (!['ID', 'Tgl Peminjaman', 'Tgl Pengembalian', 'Diubah Oleh', 'Timestamp'].includes(hName)) {
+                        headerArray.push(hName);
+                        if (hName.toLowerCase() === 'status') hasStatus = true;
+                    }
+                });
+            }
+        }
+
+        // Tambahkan kolom wajib jika belum ada
+        if (!hasStatus) headerArray.push('Status');
+
+        if (headerArray.length <= 1) {
+            showToast('Konfigurasi template tidak ditemukan untuk tipe ini.', 'error');
+            setBtnExportLoading(btn, false);
+            return;
+        }
+
+        // 2. Generate Sample Row
+        const sampleRow = headerArray.map(header => {
+            if (header === 'ID') return 'AUTO (Kosongkan)';
+            if (header.toLowerCase() === 'status') return 'Tersedia';
+
+            // Ambil dari dropdown dinamis jika ada
+            if (dynamicOptions[header] && dynamicOptions[header].length > 0) {
+                return dynamicOptions[header][0];
+            }
+
+            // Generic Samples
+            if (header.includes('Tgl') || header.includes('Date') || header.toLowerCase().includes('tanggal')) return new Date().toISOString().split('T')[0];
+            if (header.toLowerCase().includes('qty') || header.toLowerCase().includes('size')) return 1;
+            return `Contoh ${header}`;
+        });
+
+        // 3. Create Sheet with Header and Sample Row
+        const wsTemplate = XLSX.utils.aoa_to_sheet([headerArray, sampleRow]);
+
+        // 4. Styling & Comments
+        const range = XLSX.utils.decode_range(wsTemplate['!ref']);
+        const borderStyle = {
+            top: { style: "thin", color: { auto: 1 } },
+            bottom: { style: "thin", color: { auto: 1 } },
+            left: { style: "thin", color: { auto: 1 } },
+            right: { style: "thin", color: { auto: 1 } }
+        };
+        const headerStyle = {
+            fill: { fgColor: { rgb: "FFFF00" } }, // Yellow
+            font: { bold: true, color: { rgb: "000000" } },
+            border: borderStyle,
+            alignment: { horizontal: "center", vertical: "center", wrapText: true }
+        };
+        const sampleStyle = {
+            font: { italic: true, color: { rgb: "555555" } },
+            border: borderStyle
+        };
+
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+            const headAddr = XLSX.utils.encode_cell({ r: 0, c: C });
+            if (!wsTemplate[headAddr]) continue;
+            wsTemplate[headAddr].s = headerStyle;
+
+            const sampleAddr = XLSX.utils.encode_cell({ r: 1, c: C });
+            if (wsTemplate[sampleAddr]) {
+                wsTemplate[sampleAddr].s = sampleStyle;
+            }
+
+            const headerName = wsTemplate[headAddr].v;
+            
+            // Tambahkan komentar validasi sebagai instruksi
+            if (headerName === 'ID') {
+                wsTemplate[headAddr].c = [{ a: "System", t: "Biarkan kosong atau isi AUTO untuk data baru. Isi dengan ID untuk mengupdate data." }];
+            } else if (dynamicOptions[headerName]) {
+                wsTemplate[headAddr].c = [{ a: "System", t: `Pilihan valid (HARUS SAMA): \n- ${dynamicOptions[headerName].join('\n- ')}` }];
+            } else if (headerName.toLowerCase() === 'status') {
+                wsTemplate[headAddr].c = [{ a: "System", t: "Pilihan valid: \n- Tersedia \n- Dipakai \n- Rusak" }];
+            }
+        }
+
+        // Set Column Widths based on config dynamically
+        const wscols = headerArray.map(h => ({ wch: Math.max(h.length + 5, 15) }));
+        wsTemplate['!cols'] = wscols;
+
+        // 5. Create Workbook and Download
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, wsTemplate, `Template ${assetType}`);
+        
+        try {
+            XLSX.writeFile(wb, `Template_Import_${assetType}.xlsx`);
+            setBtnExportSuccess(btn);
+        } catch (error) {
+            console.error(error);
+            showToast('Gagal download template: ' + error.message, 'error');
+            setBtnExportLoading(btn, false);
+        }
+    }
+
+    function handleImportFromExcel(file, assetType) {
+        if (!file) return;
+        const reader = new FileReader();
+
+        reader.onload = (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                
+                const batchData = {};
+                let hasData = false;
+                
+                workbook.SheetNames.forEach(sheetName => {
+                    const ws = workbook.Sheets[sheetName];
+                    const rawJson = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                    
+                    if (rawJson.length <= 1) return; // Empty or only header
+                    
+                    const headers = rawJson[0].map(h => String(h).trim());
+                    const rows = rawJson.slice(1);
+                    
+                    const targetType = (workbook.SheetNames.length === 1 && assetType) ? assetType : sheetName;
+                    
+                    // Gunakan header dari cache atau fallback ke template bawaan
+                    let sheetHeaders = [];
+                    if (allData && allData[targetType] && allData[targetType].headers) {
+                        sheetHeaders = allData[targetType].headers;
+                    } else if (getExportConfig(targetType)) {
+                        sheetHeaders = getExportConfig(targetType);
+                    } else {
+                        return; // Skip jika tidak ada konfigurasi valid
+                    }
+                    
+                    // Bikin header map case-insensitive untuk toleransi typo
+                    const headerMap = {};
+                    sheetHeaders.forEach(sh => {
+                        headerMap[sh.toUpperCase()] = sh;
+                    });
+                    
+                    const mappedData = rows.map(r => {
+                        const row = {};
+                        headers.forEach((h, i) => {
+                            row[h] = r[i];
+                        });
+                        
+                        const newRow = {};
+                        if (headerMap) {
+                            Object.keys(row).forEach(k => {
+                                let val = row[k];
+                                if (val === undefined) val = "";
+                                if (val instanceof Date) val = val.toISOString();
+                                
+                                // ID is special
+                                if (k.trim().toUpperCase() === 'ID') {
+                                    if (val && String(val).toUpperCase() !== 'AUTO (KOSONGKAN)' && String(val).trim() !== '') {
+                                        newRow['ID'] = String(val).trim();
+                                    }
+                                    return;
+                                }
+                                
+                                const upKey = k.trim().toUpperCase();
+                                let sheetKey = upKey;
+                                if (headerMap[upKey]) {
+                                    sheetKey = headerMap[upKey];
+                                } else {
+                                    // Fallback mapping (contoh: MERK -> Merek)
+                                    if (upKey === 'MERK' && headerMap['MEREK']) sheetKey = 'Merek';
+                                }
+                                
+                                // Hanya map jika sheetKey ada di konfigurasi sheet Google
+                                if (sheetHeaders.includes(sheetKey)) {
+                                    newRow[sheetKey] = val;
+                                }
+                            });
+                        } else {
+                            Object.keys(row).forEach(k => {
+                                let val = row[k];
+                                if (val === undefined) val = "";
+                                if (val instanceof Date) val = val.toISOString();
+                                newRow[k] = val;
+                            });
+                        }
+                        return newRow;
+                    }).filter(r => Object.keys(r).length > 0);
+                    
+                    if (mappedData.length > 0) {
+                        batchData[targetType] = mappedData;
+                        hasData = true;
+                    }
+                });
+                
+                if (!hasData) {
+                    showToast('Data tidak valid atau nama sheet tidak sesuai.', 'error');
+                    return;
+                }
+                
+                showToast(`Menganalisis data...`, 'info');
+                
+                window.google.script.run
+                    .withSuccessHandler(res => {
+                        if (res.success) {
+                            showImportResultModal(res.summary, () => {
+                                showToast('Menyimpan data...', 'info');
+                                window.google.script.run
+                                    .withSuccessHandler(finalRes => {
+                                        showToast('Impor Berhasil!', 'success');
+                                        showImportSuccessModal(finalRes.message);
+                                        if (typeof reloadDashboardAfterImport === 'function') reloadDashboardAfterImport(batchData);
+                                    })
+                                    .withFailureHandler(err => showToast('Gagal simpan: ' + err.message, 'error'))
+                                    .importBatchData(batchData, currentUser, false);
+                            });
+                        } else {
+                            showToast('Gagal analisis: ' + res.message, 'error');
+                            alert("Gagal Analisis:\n" + res.message);
+                        }
+                    })
+                    .withFailureHandler(err => {
+                        showToast('Error server: ' + err.message, 'error');
+                    })
+                    .importBatchData(batchData, currentUser, true);
+                    
+            } catch (err) {
+                console.error(err);
+                showToast('Gagal membaca file Excel: ' + err.message, 'error');
+            }
+        };
+
+        reader.readAsArrayBuffer(file);
+    }
+
+    // --- Helper UI Functions ---
+    function showImportResultModal(summary, onConfirm) {
+        let modal = document.getElementById('import-confirm-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'import-confirm-modal';
+            modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden';
+            document.body.appendChild(modal);
+        }
+
+        let detailsHtml = '';
+        if (summary.details && summary.details.length > 0) {
+            detailsHtml = `
+            <div class="mt-4 max-h-60 overflow-y-auto bg-gray-50 p-3 rounded text-xs border border-gray-200 text-left">
+                <p class="font-bold text-gray-700 mb-2 border-b pb-1">Detail Perubahan (${summary.details.length}):</p>
+                <ul class="space-y-2">
+                    ${summary.details.map(d => {
+                let changeText = 'Perubahan: ' + d.changes.join(', ');
+                return `<li class="text-gray-600 border-b border-gray-100 last:border-0 pb-1">
+                           <span class="font-semibold text-blue-600">[${d.asset}] ${d.name}</span> <span class="text-xs text-gray-400 italic">(${d.reason})</span><br>
+                           <span class="text-yellow-600 pl-2">⚡ ${changeText}</span>
+                        </li>`;
+            }).join('')}
+                </ul>
+            </div>`;
+        } else if (summary.updateCount > 0) {
+            detailsHtml = `<p class="mt-4 text-center text-sm text-blue-600 font-medium">Ada ${summary.updateCount} data yang akan diperbarui (Data existing dengan ID/SN yang sama, tapi tanpa detail kolom).</p>`;
+        } else {
+            detailsHtml = `<p class="mt-4 text-center text-sm text-gray-500">Tidak ada konflik atau perubahan pada data existing.</p>`;
+        }
+
+        modal.innerHTML = `
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-lg p-6 transform transition-all scale-100 opacity-100 animate-fade-in-down">
+                <div class="text-center mb-6">
+                    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 mb-4">
+                        <i class="fas fa-file-import text-blue-600 text-xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Konfirmasi Impor</h3>
+                    <p class="text-sm text-gray-500">Hasil Analisis Data:</p>
+                </div>
+                
+                <div class="flex justify-center space-x-2 text-xs font-semibold uppercase tracking-wide">
+                    <div class="bg-green-100 text-green-800 px-3 py-1 rounded-full border border-green-200">Baru: ${summary.newCount}</div>
+                    <div class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full border border-blue-200">Update: ${summary.updateCount}</div>
+                    <div class="bg-gray-100 text-gray-600 px-3 py-1 rounded-full border border-gray-200">Skip: ${summary.duplicateCount}</div>
+                </div>
+
+                ${detailsHtml}
+
+                <div class="mt-8 flex justify-center gap-3">
+                    <button id="btn-cancel-imp" class="btn px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 transition w-1/3">Batal</button>
+                    <button id="btn-confirm-imp" class="btn px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 shadow-lg transition w-1/2">Yakin & Simpan</button>
+                </div>
+            </div>
+        `;
+
+        modal.classList.remove('hidden');
+
+        document.getElementById('btn-cancel-imp').onclick = () => {
+            modal.classList.add('hidden');
+        };
+        document.getElementById('btn-confirm-imp').onclick = () => {
+            modal.classList.add('hidden');
+            onConfirm();
+        };
+    }
+
+    function showImportSuccessModal(message) {
+        let modal = document.getElementById('import-success-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'import-success-modal';
+            modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden';
+            document.body.appendChild(modal);
+        }
+
+        // Parse message for stats if possible, or just show text
+        // Message format: "Data Baru : 0\nData Duplikat : 0\nData Update : 1"
+        const lines = message.split('\n');
+        let statsHtml = '';
+        const stats = { new: 0, dup: 0, upd: 0 };
+
+        lines.forEach(line => {
+            if (line.includes('Baru')) stats.new = line.split(':')[1].trim();
+            if (line.includes('Duplikat')) stats.dup = line.split(':')[1].trim();
+            if (line.includes('Update')) stats.upd = line.split(':')[1].trim();
+        });
+
+        // Use regex to check if message conforms to expected format, else just show raw
+        const isStatsFormat = lines.length >= 3 && lines[0].includes('Baru');
+
+        if (isStatsFormat) {
+            statsHtml = `
+            <div class="grid grid-cols-3 gap-4 mb-6">
+                <div class="bg-green-50 p-3 rounded-lg text-center border border-green-100">
+                    <div class="text-2xl font-bold text-green-600">${stats.new}</div>
+                    <div class="text-xs text-green-800 uppercase tracking-wide mt-1">Baru</div>
+                </div>
+                <div class="bg-blue-50 p-3 rounded-lg text-center border border-blue-100">
+                    <div class="text-2xl font-bold text-blue-600">${stats.upd}</div>
+                    <div class="text-xs text-blue-800 uppercase tracking-wide mt-1">Update</div>
+                </div>
+                <div class="bg-gray-50 p-3 rounded-lg text-center border border-gray-200">
+                    <div class="text-2xl font-bold text-gray-500">${stats.dup}</div>
+                    <div class="text-xs text-gray-600 uppercase tracking-wide mt-1">Skip</div>
+                </div>
+            </div>`;
+        } else {
+            statsHtml = `<p class="mb-4 text-center text-gray-600 whitespace-pre-wrap">${message}</p>`;
+        }
+
+        modal.innerHTML = `
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-sm p-6 transform transition-all scale-100 opacity-100 animate-bounce-in">
+                <div class="text-center">
+                    <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-6">
+                        <i class="fas fa-check text-green-600 text-3xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Impor Berhasil!</h3>
+                    <p class="text-sm text-gray-500 mb-6">Data aset telah berhasil diproses.</p>
+                </div>
+                
+                ${statsHtml}
+
+                <div class="mt-2 text-center">
+                    <button id="btn-close-success" class="btn w-full bg-green-600 text-white hover:bg-green-700 py-2 rounded-lg shadow transition">Selesai</button>
+                </div>
+            </div>
+        `;
+
+        modal.classList.remove('hidden');
+        document.getElementById('btn-close-success').onclick = () => {
+            modal.classList.add('hidden');
+        };
+    }
+
+    function reloadDashboardAfterImport(batchData) {
+        const currentHash = window.location.hash || '';
+        if (currentHash.startsWith('#dashboard-')) {
+            const currentAssetKey = currentHash.split('-')[1];
+            const wasUpdated = Object.keys(batchData).some(k => k.toLowerCase() === currentAssetKey.toLowerCase());
+
+            if (wasUpdated) {
+                const assetKeyProper = Object.keys(batchData).find(k => k.toLowerCase() === currentAssetKey.toLowerCase()) || (currentAssetKey.charAt(0).toUpperCase() + currentAssetKey.slice(1));
+                if (allData[assetKeyProper]) delete allData[assetKeyProper];
+                if (allData['PC'] && currentAssetKey === 'pc') delete allData['PC'];
+
+                const container = document.getElementById('dashboard-container');
+                if (container && window.loadDashboard) {
+                    window.loadDashboard(assetKeyProper, container);
+                }
+            }
+        }
+    }
+</script>
+
+
+

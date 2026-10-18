@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Clasp auth & local tokens (penting: jangan bocor ke repo publik)
+.clasprc.json
+
+# Temporary scripts & backups
+backup/
+scratch/
+temp*.js
+check*.js
+patch*.js
+repair*.js
+fix*.js
+update*.js
+add_nav_active.js
+compose.js
+do_refactor.js
+test.js
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,103 @@
+<script>
+    // --- SCANNER LOGIC ---
+    function startScanner() {
+        const scannerModal = document.getElementById('scanner-modal');
+        const scannerStatus = document.getElementById('scanner-status');
+        const scannerCloseButton = document.getElementById('scanner-close-button');
+
+        // Setup listeners if not already done (idempotent check)
+        if (!scannerCloseButton.hasAttribute('data-listener-attached')) {
+            scannerCloseButton.addEventListener('click', stopScanner);
+            scannerCloseButton.setAttribute('data-listener-attached', 'true');
+        }
+        if (!scannerModal.hasAttribute('data-listener-attached')) {
+            scannerModal.addEventListener('click', (e) => {
+                if (e.target === scannerModal) {
+                    stopScanner();
+                }
+            });
+            scannerModal.setAttribute('data-listener-attached', 'true');
+        }
+
+        scannerModal.classList.add('active');
+
+        if (!html5QrCode) {
+            html5QrCode = new Html5Qrcode("qr-reader");
+        }
+
+        const qrCodeSuccessCallback = (decodedText, decodedResult) => {
+            scannerStatus.textContent = `Berhasil memindai: ${decodedText}`;
+            stopScanner();
+
+            let id = decodedText;
+
+            // Handle URL-based legacy QR codes
+            if (decodedText.startsWith(webAppUrl)) {
+                try {
+                    const url = new URL(decodedText);
+                    id = url.searchParams.get("id");
+                } catch (e) {
+                    console.error("URL parsing error", e);
+                }
+            }
+            // Handle new Multi-line Detailed QR codes (Extract ID from "ID: XXX" line)
+            else if (decodedText.includes('\n')) {
+                const lines = decodedText.split('\n');
+                const idLine = lines.find(line => line.startsWith('ID: '));
+                if (idLine) {
+                    id = idLine.replace('ID: ', '').trim();
+                }
+            }
+
+            if (id) {
+                let foundAsset = null;
+                let foundAssetType = '';
+
+                for (const type in allData) {
+                    if (Array.isArray(allData[type])) {
+                        const asset = allData[type].find(item => item.ID === id);
+                        if (asset) {
+                            foundAsset = asset;
+                            foundAssetType = type;
+                            break;
+                        }
+                    }
+                }
+
+                if (foundAsset) {
+                    handleViewAction(foundAssetType, foundAsset);
+                    showToast(`Detail untuk aset ID ${id} ditampilkan.`);
+                } else {
+                    showToast(`Aset dengan ID ${id} tidak ditemukan.`, 'error');
+                }
+            } else {
+                showToast(`QR Code tidak valid.`, 'error');
+            }
+        };
+
+        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+        html5QrCode.start({ facingMode: "environment" }, config, qrCodeSuccessCallback)
+            .catch(err => {
+                scannerStatus.textContent = "Gagal memulai kamera. Pastikan Anda memberikan izin.";
+                console.error("Unable to start scanning.", err);
+            });
+    }
+
+    function stopScanner() {
+        const scannerModal = document.getElementById('scanner-modal');
+        const scannerStatus = document.getElementById('scanner-status');
+
+        if (html5QrCode && html5QrCode.isScanning) {
+            html5QrCode.stop().then(() => {
+                scannerModal.classList.remove('active');
+                scannerStatus.textContent = "Arahkan kamera ke QR Code";
+            }).catch(err => {
+                console.error("Failed to stop scanner", err);
+                scannerModal.classList.remove('active');
+            });
+        } else {
+            scannerModal.classList.remove('active');
+        }
+    }
+</script>

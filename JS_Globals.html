@@ -1,0 +1,29 @@
+<script>
+  // --- GLOBAL STATE ---
+  var allData = {};
+  var currentUser = null;
+  var currentDashboardStates = {};
+  var charts = {}; 
+  var mainDashboardChart = null; 
+  var webAppUrl = ''; 
+  var html5QrCode = null; 
+  var originalMainDashboardHtml = '';
+
+  function applyMenuConfigToAllData() {
+      const cachedMenuStr = localStorage.getItem('ASSET_MENU_CACHE');
+      if (cachedMenuStr && window.allData) {
+          try {
+              const menuData = JSON.parse(cachedMenuStr);
+              for (let type in menuData) {
+                  if (!window.allData[type]) window.allData[type] = [];
+                  window.allData[type].dashboardDesign = menuData[type].dashboardDesign;
+                  window.allData[type].fieldsConfig = menuData[type].fields;
+                  window.allData[type].config = menuData[type].fields;
+              }
+          } catch(e) {
+              console.error("Error applying menu config:", e);
+          }
+      }
+  }
+</script>
+

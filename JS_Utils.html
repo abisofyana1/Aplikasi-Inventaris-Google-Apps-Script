@@ -1,0 +1,200 @@
+<script>
+    // --- UTILITIES ---
+    function showToast(message, type = 'success') {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.className = '';
+        toast.classList.add(type, 'show');
+        setTimeout(() => {
+            toast.classList.remove('show');
+        }, 3000);
+    }
+
+    function getTodayDate() {
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    }
+
+    function getStatusFilterOptionsHtml(assetType, currentVal) {
+        const standardOptions = ['DIPAKAI', 'TERSEDIA', 'RUSAK'];
+        const optionsSet = new Set(standardOptions);
+
+        // Kumpulkan semua opsi status unik dari konfigurasi dan data baris SELURUH aset
+        if (window.allData) {
+            // 1. Cek dari konfigurasi jenis aset saat ini & seluruh jenis aset
+            Object.keys(window.allData).forEach(type => {
+                const assetData = window.allData[type];
+                if (!assetData) return;
+
+                const cfg = assetData.config || assetData.fieldsConfig;
+                if (Array.isArray(cfg)) {
+                    const statusField = cfg.find(f => f && f.name && f.name.toLowerCase() === 'status');
+                    if (statusField && statusField.options) {
+                        statusField.options.split(',').map(s => s.trim().toUpperCase()).filter(Boolean).forEach(s => optionsSet.add(s));
+                    }
+                }
+
+                // 2. Cek nilai status dari baris data yang ada
+                const rows = Array.isArray(assetData) 
+                    ? assetData 
+                    : (assetData.rows || []);
+                rows.forEach(r => {
+                    if (r && r.Status) {
+                        const st = String(r.Status).trim().toUpperCase();
+                        if (st) optionsSet.add(st);
+                    }
+                });
+            });
+        }
+
+        // 3. Cek juga dari ASSET_MENU_CACHE jika allData belum lengkap
+        try {
+            const cachedMenuStr = localStorage.getItem('ASSET_MENU_CACHE');
+            if (cachedMenuStr) {
+                const menuData = JSON.parse(cachedMenuStr);
+                Object.values(menuData).forEach(item => {
+                    if (item && Array.isArray(item.fields)) {
+                        const statusField = item.fields.find(f => f && f.name && f.name.toLowerCase() === 'status');
+                        if (statusField && statusField.options) {
+                            statusField.options.split(',').map(s => s.trim().toUpperCase()).filter(Boolean).forEach(s => optionsSet.add(s));
+                        }
+                    }
+                });
+            }
+        } catch (e) {
+            console.error("Error reading status from ASSET_MENU_CACHE:", e);
+        }
+
+        let html = `<option value="all" ${currentVal === 'all' ? 'selected' : ''}>SEMUA STATUS</option>`;
+        Array.from(optionsSet).forEach(opt => {
+            html += `<option value="${opt}" ${currentVal === opt ? 'selected' : ''}>${opt}</option>`;
+        });
+        return html;
+    }
+
+    function getDoughnutOptions() {
+        const isDark = document.documentElement.classList.contains('dark');
+        const hasCustomBg = document.body && document.body.classList.contains('has-custom-bg');
+        return {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '75%',
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    enabled: true,
+                    backgroundColor: hasCustomBg ? 'rgba(15, 23, 42, 0.92)' : (isDark ? '#374151' : 'rgba(0,0,0,0.8)'),
+                    titleColor: '#fff',
+                    bodyColor: '#e2e8f0',
+                    borderColor: hasCustomBg ? 'rgba(255, 255, 255, 0.25)' : (isDark ? '#4b5563' : 'rgba(0,0,0,0.8)'),
+                    borderWidth: 1
+                }
+            }
+        };
+    }
+
+    // --- THEME LOGIC ---
+    function initTheme() {
+        const themeToggleBtn = document.getElementById('theme-toggle');
+        const themeToggleDarkIcon = document.getElementById('theme-toggle-dark-icon');
+        const themeToggleLightIcon = document.getElementById('theme-toggle-light-icon');
+
+        const updateThemeIcons = () => {
+            if (document.documentElement.classList.contains('dark')) {
+                themeToggleLightIcon.classList.remove('hidden');
+                themeToggleDarkIcon.classList.add('hidden');
+            } else {
+                themeToggleLightIcon.classList.add('hidden');
+                themeToggleDarkIcon.classList.remove('hidden');
+            }
+        };
+
+        updateThemeIcons();
+
+        themeToggleBtn.addEventListener('click', () => {
+            document.documentElement.classList.toggle('dark');
+            const newTheme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+            localStorage.setItem('color-theme', newTheme);
+            updateThemeIcons();
+
+            const currentHash = window.location.hash || '#home';
+            if (currentHash === '#main-dashboard') {
+                if (window.loadMainDashboard) window.loadMainDashboard();
+            } else if (currentHash.startsWith('#dashboard-')) {
+                const assetTypeKey = currentHash.split('-')[1];
+                let assetType = assetTypeKey.charAt(0).toUpperCase() + assetTypeKey.slice(1);
+                if (assetTypeKey === 'pc') assetType = 'PC';
+                if (assetTypeKey === 'ram') assetType = 'RAM';
+                if (window.rerenderDashboard) window.rerenderDashboard(assetType);
+            }
+        });
+    }
+
+    function showConfirm(title, message, btnText = 'Hapus', isDanger = true, hideCancel = false) {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('confirm-modal');
+            const titleEl = document.getElementById('confirm-modal-title');
+            const messageEl = document.getElementById('confirm-modal-message');
+            const okBtn = document.getElementById('confirm-ok-btn');
+            const cancelBtn = document.getElementById('confirm-cancel-btn');
+            const iconEl = modal.querySelector('i');
+            const iconContainer = iconEl.parentElement;
+
+            titleEl.textContent = title;
+            messageEl.textContent = message;
+            okBtn.textContent = btnText;
+
+            if (isDanger) {
+                okBtn.className = 'px-4 py-2 text-sm font-medium bg-red-600 text-white hover:bg-red-700 rounded-lg shadow-sm transition-all';
+                iconEl.className = 'fas fa-trash-alt text-2xl text-red-600 dark:text-red-400';
+                iconContainer.className = 'flex items-center justify-center w-16 h-16 mx-auto bg-red-100 dark:bg-red-900/30 rounded-full mb-4';
+            } else {
+                okBtn.className = 'px-4 py-2 text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg shadow-sm transition-all';
+                iconEl.className = 'fas fa-info-circle text-2xl text-indigo-600 dark:text-indigo-400';
+                iconContainer.className = 'flex items-center justify-center w-16 h-16 mx-auto bg-indigo-100 dark:bg-indigo-900/30 rounded-full mb-4';
+            }
+
+            if (hideCancel) {
+                cancelBtn.classList.add('hidden');
+                okBtn.parentElement.classList.add('justify-center');
+                okBtn.parentElement.classList.remove('justify-end');
+            } else {
+                cancelBtn.classList.remove('hidden');
+                okBtn.parentElement.classList.remove('justify-center');
+                okBtn.parentElement.classList.add('justify-end');
+            }
+
+            modal.classList.add('active');
+
+            const cleanup = () => {
+                modal.classList.remove('active');
+                okBtn.onclick = null;
+                cancelBtn.onclick = null;
+                modal.onclick = null;
+            };
+
+            okBtn.onclick = () => {
+                cleanup();
+                resolve(true);
+            };
+
+            cancelBtn.onclick = () => {
+                cleanup();
+                resolve(false);
+            };
+
+            modal.onclick = (e) => {
+                if (e.target === modal) {
+                    cleanup();
+                    resolve(false);
+                }
+            };
+        });
+    }
+
+    window.showConfirm = showConfirm;
+    initTheme();
+</script>

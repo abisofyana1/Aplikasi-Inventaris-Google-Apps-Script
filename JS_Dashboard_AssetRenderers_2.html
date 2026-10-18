@@ -1,0 +1,886 @@
+<script>
+
+    // --- ASSET SPECIFIC RENDERERS PART 2 ---
+
+    // --- STANDARD (SPEAKER ETC using Generic) ---
+    const renderStandardCharts = (assetType, stats) => {
+        const doughnutOptions = getDoughnutOptions();
+        const isDark = document.documentElement.classList.contains('dark');
+        const colors = {
+            status: ['#facc15', '#4ade80'],
+            brand: ['#60a5fa', '#fb923c', '#a78bfa', '#f87171', '#34d399'],
+            duration: ['#f87171', '#34d399', '#60a5fa', '#fb923c', '#a78bfa']
+        };
+
+        // Chart 1: Status
+        const statusCtx = document.getElementById(`${assetType}-statusChart`);
+        if (statusCtx) {
+            if (charts.status) charts.status.destroy();
+            charts.status = new Chart(statusCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: [`${assetType} Dipakai`, `${assetType} Tersedia`, `${assetType} Rusak`],
+                    datasets: [{ data: [stats.borrowed, stats.returned, stats.broken || 0], backgroundColor: colors.status, borderColor: isDark ? '#1f2937' : '#fff' }]
+                },
+                options: doughnutOptions
+            });
+        }
+
+        // Chart 2: Merek
+        const brandCtx = document.getElementById(`${assetType}-brandChart`);
+        if (brandCtx) {
+            if (charts.brand) charts.brand.destroy();
+            const brandLabels = Object.keys(stats.byBrand);
+            const brandData = Object.values(stats.byBrand);
+            charts.brand = new Chart(brandCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: brandLabels,
+                    datasets: [{ data: brandData, backgroundColor: colors.brand, borderColor: isDark ? '#1f2937' : '#fff' }]
+                },
+                options: doughnutOptions
+            });
+        }
+
+        // Chart 3: Durasi
+        const durationCtx = document.getElementById(`${assetType}-durationChart`);
+        if (durationCtx) {
+            if (charts.duration) charts.duration.destroy();
+            charts.duration = new Chart(durationCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: stats.top5Durations.map(d => d.name),
+                    datasets: [{ data: stats.top5Durations.map(d => d.durationMs / 3600000), backgroundColor: colors.duration, borderColor: isDark ? '#1f2937' : '#fff' }]
+
+                },
+                options: doughnutOptions
+            });
+        }
+    };
+
+    const generateStandardDashboardHtml = (assetType, data, state, stats) => {
+        const paginatedData = data.slice((state.currentPage - 1) * state.rowsPerPage, state.currentPage * state.rowsPerPage);
+        const totalPages = Math.ceil(data.length / state.rowsPerPage);
+        
+        // DYNAMIC HEADERS: Fetch from allData config
+        const assetConfig = allData[assetType];
+        let rawHeaders = [];
+        if (assetConfig && assetConfig.headers) {
+            const systemEnd = ['Petugas', 'Status', 'Tgl Peminjaman', 'Tgl Pengembalian'];
+            // Filter out system columns and internal hidden fields
+            const customFields = assetConfig.headers.filter(h => 
+                !['ID', 'RowIndex', 'SheetName', 'Timestamp', 'Diubah Oleh', 'Aksi', ...systemEnd].includes(h)
+            );
+            
+            // Build final order: [Custom Fields] + [The 3 system fields] + [Aksi]
+            const systemFieldsFound = systemEnd.filter(h => assetConfig.headers.includes(h));
+            rawHeaders = [...customFields, ...systemFieldsFound, 'Aksi'];
+        } else {
+            // Fallback
+            rawHeaders = ['Nama', 'Merek', 'Keterangan', 'Tgl Peminjaman', 'Tgl Pengembalian', 'Petugas', 'Status', 'Aksi'];
+        }
+
+        // Grouping Logic
+        let groupedHeaders = [];
+        let groupMap = {};
+        if (assetConfig && assetConfig.fieldsConfig) {
+            assetConfig.fieldsConfig.forEach(f => {
+                if (f.groupName && f.groupName.trim() !== '') {
+                    groupMap[f.name] = f.groupName;
+                }
+            });
+        }
+
+        let processedGroups = new Set();
+        rawHeaders.forEach(h => {
+            let gName = groupMap[h];
+            if (gName && gName.trim() !== '') {
+                if (!processedGroups.has(gName)) {
+                    let fieldsInGroup = rawHeaders.filter(rh => groupMap[rh] === gName);
+                    groupedHeaders.push({ type: 'group', name: gName, fields: fieldsInGroup });
+                    processedGroups.add(gName);
+                }
+            } else {
+                groupedHeaders.push({ type: 'single', name: h });
+            }
+        });
+
+        const createLegendHtml = (title, data, colors) => {
+            let itemsHtml = Object.entries(data).slice(0, 4).map(([label, value], index) => `
+              <div class="legend-item">
+                  <div class="legend-color-box" style="background-color: ${colors[index % colors.length]};"></div>
+                  <span>${label}: <strong>${value}</strong></span>
+              </div>`).join('');
+            if (Object.keys(data).length > 4) {
+                itemsHtml += `<div class="mt-1 text-xs text-gray-400 dark:text-gray-500">+${Object.keys(data).length - 4} lainnya</div>`;
+            }
+            return `<h4 class="font-semibold mb-2">${title}</h4><div class="chart-legend">${itemsHtml}</div>`;
+        };
+
+        const durationLegendHtml = stats.top5Durations.map((item, index) => `
+        <div class="legend-item">
+            <div class="legend-color-box" style="background-color: ${['#60a5fa', '#fb923c', '#a78bfa', '#f87171', '#34d399'][index % 5]};"></div>
+            <span>${item.name} | ${item.status} | <strong>${item.duration}</strong></span>
+        </div>`).join('');
+
+        return `
+          <div class="mb-2 flex items-center justify-between">
+            <h2 class="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                <i class="fas fa-boxes-stacked text-indigo-500"></i>
+                Dashboard ${assetType}
+            </h2>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+              <div class="dashboard-chart-card">
+                  <div class="doughnut-chart-container">
+                      <canvas id="${assetType}-statusChart"></canvas>
+                      <div class="chart-center-text"><span class="value">${stats.total}</span><br><span class="label">Total</span></div>
+                  </div>
+                  <div class="flex-grow">${createLegendHtml('Status', { [`${assetType} Dipakai`]: stats.borrowed, [`${assetType} Tersedia`]: stats.returned, [`${assetType} Rusak`]: stats.broken || 0 }, ['#facc15', '#4ade80', '#f87171'])}</div>
+              </div>
+              <div class="dashboard-chart-card">
+                  <div class="doughnut-chart-container">
+                       <canvas id="${assetType}-brandChart"></canvas>
+                       <div class="chart-center-text"><span class="value">${Object.keys(stats.byBrand).length}</span><br><span class="label">Merek</span></div>
+                  </div>
+                  <div class="flex-grow">${createLegendHtml('Merek', stats.byBrand, ['#60a5fa', '#fb923c', '#a78bfa', '#f87171', '#34d399'])}</div>
+              </div>
+              <div class="dashboard-chart-card">
+                  <div class="doughnut-chart-container">
+                       <canvas id="${assetType}-durationChart"></canvas>
+                       <div class="chart-center-text"><span class="value">${stats.top5Durations.length}</span><br><span class="label">Terbaru</span></div>
+                  </div>
+                  <div class="flex-grow"><h4 class="font-semibold mb-2">5 ${assetType} Terbaru</h4><div class="chart-legend">${durationLegendHtml}</div></div>
+              </div>
+          </div>
+
+          <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+            <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
+              <div class="flex flex-wrap items-center w-full md:w-auto gap-2">
+                <div class="relative flex-grow w-full md:w-auto"><input type="text" placeholder="Cari..." class="form-input pl-10 pr-10 w-full" value="${state.searchTerm}">
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                        ${state.searchTerm ? `<button type="button" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none" onclick="const i=this.parentElement.querySelector('input'); i.value=''; i.dispatchEvent(new Event('input', {bubbles:true}))"><i class="fas fa-times"></i></button>` : ''}</div>
+                <button id="scan-qr-button" class="btn btn-secondary flex-shrink-0 md:px-3.5"><i class="fas fa-qrcode"></i></button>
+                    <button data-action="import-excel" class="btn btn-secondary flex-1 md:flex-initial text-center justify-center text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300"><i class="fas fa-file-import mr-1.5"></i>Impor</button>
+                    <button data-action="export-excel" class="btn btn-secondary flex-1 md:flex-initial text-center justify-center text-xs bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-300"><i class="fas fa-file-excel mr-1.5"></i>Ekspor</button>
+                    <button data-action="export-log-aktivitas" class="btn btn-secondary flex-1 md:flex-initial text-center justify-center text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300"><i class="fas fa-download mr-1.5"></i>Log</button>
+              </div>
+              <div class="flex items-center gap-4"><div class="flex items-center gap-2"><span>Tampilkan</span><select class="form-select !p-2 !w-auto" data-control="rows-per-page">${[5, 10, 25, 50, 100].map(n => `<option ${state.rowsPerPage == n ? 'selected' : ''}>${n}</option>`).join('')}</select><span>data</span></div></div>
+            </div>
+            <div class="overflow-x-auto overflow-y-auto max-h-[60vh] relative"><table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+            <thead class="sticky top-0 z-20 text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 hidden md:table-header-group"><tr>${groupedHeaders.map(col => {
+                const h = col.name;
+                if (['Status', 'Tgl Peminjaman', 'Tgl Pengembalian', 'Aksi', 'STATUS', 'TGL PEMINJAMAN', 'TGL PENGEMBALIAN', 'AKSI'].includes(h.trim())) {
+                    if (h.trim().toUpperCase() === 'STATUS') {
+                        return `<th scope="col" class="px-6 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>${h}</div>
+                    <select class="form-select text-xs !p-1.5 mt-2 w-full font-normal" data-control="status-filter">
+                                ${typeof getStatusFilterOptionsHtml === 'function' ? getStatusFilterOptionsHtml('Headset', state.statusFilter) : `
+                                <option value="all" ${state.statusFilter === 'all' ? 'selected' : ''}>SEMUA STATUS</option>
+                                <option value="DIPAKAI" ${state.statusFilter === 'DIPAKAI' ? 'selected' : ''}>DIPAKAI</option>
+                                <option value="TERSEDIA" ${state.statusFilter === 'TERSEDIA' ? 'selected' : ''}>TERSEDIA</option>
+                                <option value="RUSAK" ${state.statusFilter === 'RUSAK' ? 'selected' : ''}>RUSAK</option>
+                                `}
+                            </select>
+                </div>
+            </th>
+                        </th>`;
+                    }
+                    return `<th scope="col" class="px-6 py-3 align-top"><div>${h}</div></th>`;
+                }
+                return `<th scope="col" class="px-6 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>${h}</div>
+                    <div class="relative w-full mt-2">
+                        <input type="text" class="form-input text-xs !py-1.5 !pl-1.5 !pr-7 w-full font-normal" data-col-filter="${h}" placeholder="Cari..." value="${state.columnFilters?.[h] || ''}">
+                        ${state.columnFilters?.[h] ? `<i class="fas fa-times absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600" onclick="this.previousElementSibling.value=''; this.previousElementSibling.dispatchEvent(new Event('input', {bubbles:true}))"></i>` : ''}
+                    </div>
+                
+                </div>
+            `;
+            }).join('')}</tr>
+          </thead>
+            <tbody>${paginatedData.map(row => `
+              <tr class="block md:table-row mb-4 md:mb-0 border md:border-gray-200 dark:border-gray-700 md:border-b rounded-lg shadow-md md:shadow-none ${(row.Status === 'Dipakai' || row.Status === 'Dipinjam' || String(row.Status).includes('PAKAI')) ? 'bg-yellow-50 dark:bg-yellow-900/20' : 'bg-white dark:bg-gray-800'}">
+                ${groupedHeaders.slice(0, -1).map(col => {
+                    const cellId = row.ID || row['ID'];
+                    const h = col.name;
+                    const isGroup = col.type === 'group';
+                    return `
+                      <td class="p-3 block md:table-cell md:px-6 md:py-4 text-left border-b border-gray-200 dark:border-gray-700 md:border-none">
+                        ${isGroup ?
+                            `<div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">${h}</div>
+                            <div class="flex flex-col gap-1 text-xs">
+                                ${col.fields.map(f => `
+                                <div class="flex flex-row md:block items-start ml-3 md:ml-0">
+                                    <span class="w-[40%] md:w-auto text-gray-600 md:text-gray-900 md:font-bold flex-shrink-0">${f}</span>
+                                    <span class="w-[60%] md:w-auto md:inline"><span class="md:hidden mr-1">:</span>${row[f] || '-'}</span>
+                                </div>`).join('')}
+                            </div>`
+                            :
+                            ((h === 'Tgl Peminjaman' || h === 'Tgl Pengembalian') ?
+                                `<div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">${h}</div>
+                                <div class="flex items-center justify-start ml-3 md:ml-0 gap-2">
+                                    <span>${row[h] || ''}</span>
+                                    <button data-action="edit-date" data-field="${h === 'Tgl Peminjaman' ? 'loan' : 'return'}" data-id="${cellId}" class="text-blue-500 hover:text-blue-700 p-1">
+                                        <i class="fas fa-calendar-alt"></i>
+                                    </button>
+                                </div>`
+                                :
+                                `<div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">${h}</div>
+                                <div class="ml-3 md:ml-0 inline-block break-words">${row[h] || ''}</div>`)
+                        }
+                      </td>
+                    `;
+                }).join('')}
+                <td class="p-3 block md:table-cell md:px-6 md:py-4 text-left">
+                  <div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-2">AKSI</div>
+                  <div class="flex items-center justify-start ml-3 md:ml-0 space-x-2">
+                    <button data-action="view" data-id="${row.ID || row['ID']}" class="text-blue-500 hover:text-blue-700"><i class="fas fa-eye"></i></button>
+                    <button data-action="edit" data-id="${row.ID || row['ID']}" class="text-green-500 hover:text-green-700"><i class="fas fa-pencil-alt"></i></button>
+                    <button data-action="delete" data-id="${row.ID || row['ID']}" class="text-red-500 hover:text-red-700"><i class="fas fa-trash-alt"></i></button>
+                  </div>
+                </td>
+              </tr>
+            `).join('')}</tbody></table>
+            ${data.length === 0 ? '<p class="text-center text-gray-500 dark:text-gray-400 py-8">Tidak ada data yang cocok.</p>' : ''}
+            </div>
+            <div class="flex justify-between items-center mt-4"><span class="text-sm text-gray-700 dark:text-gray-300">Menampilkan ${paginatedData.length > 0 ? (state.currentPage - 1) * state.rowsPerPage + 1 : 0} sampai ${Math.min(state.currentPage * state.rowsPerPage, data.length)} dari ${data.length} data</span><div class="inline-flex mt-2 xs:mt-0"><button class="btn btn-secondary rounded-r-none" data-control="prev" ${state.currentPage <= 1 ? 'disabled' : ''}>Prev</button><button class="btn btn-secondary rounded-l-none" data-control="next" ${state.currentPage >= totalPages ? 'disabled' : ''}>Next</button></div></div>
+          </div>`;
+    };
+
+    // --- HEADSET ---
+    const renderNewHeadsetCharts = (stats) => {
+        const doughnutOptions = getDoughnutOptions();
+        const isDark = document.documentElement.classList.contains('dark');
+        const colors = {
+            brand: ['#60a5fa', '#fb923c', '#a78bfa', '#f87171'],
+            layanan: ['#2dd4bf', '#60a5fa', '#f472b6', '#fbbf24', '#a78bfa', '#818cf8', '#f87171', '#4ade80', '#fb923c', '#c084fc', '#06b6d4', '#d946ef', '#db2777', '#f59e0b']
+        };
+
+        // Chart 1: Status (hanya untuk visual total)
+        const statusCtx = document.getElementById(`headset-status-chart`);
+        if (statusCtx) {
+            if (charts.status) charts.status.destroy();
+            charts.status = new Chart(statusCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Headset'],
+                    datasets: [{ data: [stats.total], backgroundColor: ['#34d399'], borderColor: isDark ? '#1f2937' : '#fff', borderWidth: 2 }]
+                },
+                options: doughnutOptions
+            });
+            const statusLegendEl = document.getElementById('headset-status-legend');
+            if (statusLegendEl) {
+                statusLegendEl.innerHTML = `
+                  <p>Headset Dipakai: <strong>${stats.dipakai}</strong></p>
+                  <p>Headset Tersedia: <strong>${stats.tersedia}</strong></p>
+                  <p>Headset Rusak: <strong>${stats.rusak}</strong></p>
+              `;
+            }
+        }
+
+        // Chart 2: Merek
+        const brandCtx = document.getElementById(`headset-brand-chart`);
+        if (brandCtx) {
+            if (charts.brand) charts.brand.destroy();
+            const brandLabels = Object.keys(stats.byBrand).filter(k => k !== 'N/A');
+            const brandData = brandLabels.map(label => stats.byBrand[label]);
+            charts.brand = new Chart(brandCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: brandLabels,
+                    datasets: [{ data: brandData, backgroundColor: colors.brand, borderColor: isDark ? '#1f2937' : '#fff', borderWidth: 2 }]
+                },
+                options: doughnutOptions
+            });
+            const brandLegendEl = document.getElementById('headset-brand-legend');
+            if (brandLegendEl) {
+                brandLegendEl.innerHTML = brandLabels.map(label => `<p>${label}: <strong>${stats.byBrand[label] || 0}</strong></p>`).join('');
+            }
+        }
+
+        // Chart 3: Layanan
+        const layananCtx = document.getElementById(`headset-layanan-chart`);
+        if (layananCtx) {
+            if (charts.layanan) charts.layanan.destroy();
+            const layananLabels = Object.keys(stats.byLayanan).filter(k => k !== 'N/A');
+            const layananData = layananLabels.map(label => stats.byLayanan[label]);
+            charts.layanan = new Chart(layananCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: layananLabels,
+                    datasets: [{ data: layananData, backgroundColor: colors.layanan, borderColor: isDark ? '#1f2937' : '#fff', borderWidth: 2 }]
+                },
+                options: doughnutOptions
+            });
+            const layananLegendEl = document.getElementById('headset-layanan-legend');
+            if (layananLegendEl) {
+                layananLegendEl.innerHTML = layananLabels.map(label => `<p>${label}: <strong>${stats.byLayanan[label] || 0}</strong></p>`).join('');
+            }
+        }
+    };
+
+    const generateNewHeadsetDashboardHtml = (data, state, stats, fieldsConfig) => {
+        const paginatedData = data.slice((state.currentPage - 1) * state.rowsPerPage, state.currentPage * state.rowsPerPage);
+        const totalPages = Math.ceil(data.length / state.rowsPerPage);
+                const hardcodedHeadsetFields = ['ID', 'Kondisi', 'Status', 'Tgl Peminjaman', 'Tgl Pengembalian', 'Aksi', 'RowIndex', 'SheetName', 'Timestamp', 'Diubah Oleh'];
+        const allHeadsetKeys = (state.originalData && state.originalData.length > 0) ? Object.keys(state.originalData[0]) : (data.length > 0 ? Object.keys(data[0]) : []);
+        const dynamicHeadsetFields = allHeadsetKeys.filter(k => {
+            const config = fieldsConfig && fieldsConfig.find(f => f.name.trim().toLowerCase() === k.trim().toLowerCase());
+            if (config && config.hiddenInDashboard) return false;
+            if (config && config.groupName && config.groupName.trim() !== '') return true;
+            if (hardcodedHeadsetFields.includes(k)) return false;
+            return true;
+        });
+        if (fieldsConfig) {
+            dynamicHeadsetFields.sort((a, b) => {
+                const indexA = fieldsConfig.findIndex(f => f.name.trim().toLowerCase() === a.trim().toLowerCase());
+                const indexB = fieldsConfig.findIndex(f => f.name.trim().toLowerCase() === b.trim().toLowerCase());
+                if (indexA === -1 && indexB === -1) return 0;
+                if (indexA === -1) return 1;
+                if (indexB === -1) return -1;
+                return indexA - indexB;
+            });
+        }
+
+        const isGrouped = (fieldName) => {
+            if (!fieldsConfig) return false;
+            const config = fieldsConfig.find(f => f.name.trim().toLowerCase() === fieldName.trim().toLowerCase());
+            return config && config.groupName && config.groupName.trim() !== '';
+        };
+
+        const isHidden = (fieldName) => {
+            if (!fieldsConfig) return false;
+            const config = fieldsConfig.find(f => f.name.trim().toLowerCase() === fieldName.trim().toLowerCase());
+            return (config && config.hiddenInDashboard) || isGrouped(fieldName);
+        };
+
+
+let groupedDynamicHeadsetFields = [];
+        let HeadsetGroupMap = {};
+        if (fieldsConfig) {
+            fieldsConfig.forEach(f => {
+                if (f.groupName && f.groupName.trim() !== '') {
+                    HeadsetGroupMap[f.name] = f.groupName;
+                }
+            });
+        }
+        let processedHeadsetGroups = new Set();
+        dynamicHeadsetFields.forEach(h => {
+            let gName = HeadsetGroupMap[h];
+            if (gName && gName.trim() !== '') {
+                if (!processedHeadsetGroups.has(gName)) {
+                    let fieldsInGroup = dynamicHeadsetFields.filter(rh => HeadsetGroupMap[rh] === gName);
+                    groupedDynamicHeadsetFields.push({ type: 'group', name: gName, fields: fieldsInGroup });
+                    processedHeadsetGroups.add(gName);
+                }
+            } else {
+                groupedDynamicHeadsetFields.push({ type: 'single', name: h });
+            }
+        });
+        
+
+        const headers = [];
+        headers.push(...groupedDynamicHeadsetFields);
+        if (!isHidden('Petugas')) headers.push('Petugas');
+        if (!isHidden('Kondisi')) headers.push('Kondisi');
+        if (!isHidden('Status')) headers.push('Status');
+        if (!isHidden('Tgl Peminjaman')) headers.push('Tgl Peminjaman');
+        if (!isHidden('Tgl Pengembalian')) headers.push('Tgl Pengembalian');
+        headers.push('Aksi');
+
+        return `
+          <div class="mb-2 flex items-center justify-between">
+            <h2 class="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                <i class="fas fa-headset text-indigo-500"></i>
+                Dashboard Headset
+            </h2>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+              <!-- Status Card -->
+              <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md flex items-center gap-4">
+                  <div class="doughnut-chart-container">
+                      <canvas id="headset-status-chart"></canvas>
+                      <div class="chart-center-text"><span class="value">${stats.total}</span><br><span class="label">Total</span></div>
+                  </div>
+                  <div id="headset-status-legend" class="chart-legend text-sm">
+                      <!-- Legend will be populated by JS -->
+                  </div>
+              </div>
+              <!-- Merek Card -->
+              <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md flex items-center gap-4">
+                  <div class="doughnut-chart-container">
+                       <canvas id="headset-brand-chart"></canvas>
+                       <div class="chart-center-text"><span class="value">${Object.keys(stats.byBrand).filter(k => k !== 'N/A').length}</span><br><span class="label">Merek</span></div>
+                  </div>
+                  <div id="headset-brand-legend" class="chart-legend text-sm">
+                      <!-- Legend will be populated by JS -->
+                  </div>
+              </div>
+              <!-- Layanan Card -->
+              <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md flex items-center gap-4">
+                  <div class="doughnut-chart-container">
+                       <canvas id="headset-layanan-chart"></canvas>
+                       <div class="chart-center-text"><span class="value">${Object.keys(stats.byLayanan).filter(k => k !== 'N/A').length}</span><br><span class="label">Layanan</span></div>
+                  </div>
+                  <div id="headset-layanan-legend" class="chart-legend text-xs overflow-y-auto max-h-24">
+                      <!-- Legend will be populated by JS -->
+                  </div>
+              </div>
+          </div>
+
+          <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+            <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
+                <div class="flex flex-wrap items-center w-full md:w-auto gap-2">
+                    <div class="relative flex-grow w-full md:w-auto">
+                        <input type="text" placeholder="Cari..." class="form-input pl-10 pr-10 w-full" value="${state.searchTerm}">
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                        ${state.searchTerm ? `<button type="button" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none" onclick="const i=this.parentElement.querySelector('input'); i.value=''; i.dispatchEvent(new Event('input', {bubbles:true}))"><i class="fas fa-times"></i></button>` : ''}
+                    </div>
+                    <button id="scan-qr-button" class="btn btn-secondary flex-shrink-0 md:px-3.5"><i class="fas fa-qrcode"></i></button>
+                    <button data-action="import-excel" class="btn btn-secondary flex-1 md:flex-initial text-center justify-center text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300"><i class="fas fa-file-import mr-1.5"></i>Impor</button>
+                    <button data-action="export-excel" class="btn btn-secondary flex-1 md:flex-initial text-center justify-center text-xs bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-300"><i class="fas fa-file-excel mr-1.5"></i>Ekspor</button>
+                    <button data-action="export-log-aktivitas" class="btn btn-secondary flex-1 md:flex-initial text-center justify-center text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300"><i class="fas fa-download mr-1.5"></i>Log</button>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-2">
+                        <span>Tampilkan</span>
+                        <select class="form-select !p-2 !w-auto" data-control="rows-per-page">${[5, 10, 25, 50, 100].map(n => `<option ${state.rowsPerPage == n ? 'selected' : ''}>${n}</option>`).join('')}</select>
+                        <span>data</span>
+                    </div>
+                </div>
+            </div>
+            <div class="overflow-x-auto overflow-y-auto max-h-[60vh] relative">
+                <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+                    <thead class="sticky top-0 z-20 text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 hidden md:table-header-group">
+                        <tr>${headers.map(col => {
+                const h = col.name ? col.name.toUpperCase() : col.toUpperCase();
+                const filterKey = col.name || col;
+                const colType = col.type || 'single';
+                if (['Status', 'Tgl Peminjaman', 'Tgl Pengembalian', 'Aksi', 'STATUS', 'TGL PEMINJAMAN', 'TGL PENGEMBALIAN', 'AKSI'].includes(h.trim())) {
+                    if (h.trim().toUpperCase() === 'STATUS') {
+                        return `<th scope="col" class="px-4 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>${h}</div>
+                    <select class="form-select text-xs !p-1.5 mt-2 w-full font-normal" data-control="status-filter">
+                                ${typeof getStatusFilterOptionsHtml === 'function' ? getStatusFilterOptionsHtml('Laptop', state.statusFilter) : `
+                                <option value="all" ${state.statusFilter === 'all' ? 'selected' : ''}>SEMUA STATUS</option>
+                                <option value="DIPAKAI" ${state.statusFilter === 'DIPAKAI' ? 'selected' : ''}>DIPAKAI</option>
+                                <option value="TERSEDIA" ${state.statusFilter === 'TERSEDIA' ? 'selected' : ''}>TERSEDIA</option>
+                                <option value="RUSAK" ${state.statusFilter === 'RUSAK' ? 'selected' : ''}>RUSAK</option>
+                                `}
+                            </select>
+                </div>
+            </th>
+                        </th>`;
+                    }
+                    return `<th scope="col" class="px-4 py-3 align-top"><div>${h}</div></th>`;
+                } else if (h.trim().toUpperCase() === 'KONDISI') {
+                    return `<th scope="col" class="px-4 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>KONDISI</div>
+                    <select class="form-select text-xs !p-1.5 mt-2 w-full font-normal" data-filter="kondisi">
+                            <option value="all" ${state.kondisiFilter === 'all' ? 'selected' : ''}>SEMUA KONDISI</option>
+                            <option value="Baru" ${state.kondisiFilter === 'Baru' ? 'selected' : ''}>BARU</option>
+                            <option value="Bisa Dipakai" ${state.kondisiFilter === 'Bisa Dipakai' ? 'selected' : ''}>BISA DIPAKAI</option>
+                            <option value="Rusak" ${state.kondisiFilter === 'Rusak' ? 'selected' : ''}>RUSAK</option>
+                        </select>
+                </div>
+            </th>
+                    </th>`;
+                }
+                return `<th scope="col" class="px-4 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>${h}</div>
+                    <div class="relative w-full mt-2">
+                        <input type="text" class="form-input text-xs !py-1.5 !pl-1.5 !pr-7 w-full font-normal" data-col-filter="${filterKey}" placeholder="Cari..." value="${state.columnFilters?.[filterKey] || ''}">
+                        ${state.columnFilters?.[filterKey] ? `<i class="fas fa-times absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600" onclick="this.previousElementSibling.value=''; this.previousElementSibling.dispatchEvent(new Event('input', {bubbles:true}))"></i>` : ''}
+                    </div>
+                
+                </div>
+            `;
+            }).join('')}</tr>
+                    </thead>
+                    <tbody>${paginatedData.map(row => `
+                      <tr class="block md:table-row bg-white border md:border-gray-200 dark:border-gray-700 md:border-b dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-600 mb-4 md:mb-0 rounded-lg shadow-md md:shadow-none">
+                          ${groupedDynamicHeadsetFields.map(col => `
+                          <td class="p-3 block md:table-cell md:px-4 md:py-2 border-b border-gray-200 dark:border-gray-700 md:border-none text-left text-xs">
+                              ${col.type === 'group' ? 
+                                `<div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">${col.name}</div>
+                                <div class="flex flex-col gap-1">
+                                    ${col.fields.map(f => `
+                                    <div class="flex flex-row md:block items-start ml-3 md:ml-0">
+                                        <span class="w-[40%] md:w-auto text-gray-600 md:text-gray-900 md:font-bold flex-shrink-0">${f}</span>
+                                        <span class="w-[60%] md:w-auto md:inline"><span class="md:hidden mr-1">:</span>${row[f] || '-'}</span>
+                                    </div>`).join('')}
+                                </div>` : 
+                                `<div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">${col.name}</div>
+                                <div class="ml-3 md:ml-0">${row[col.name] || ''}</div>`
+                              }
+                          </td>`).join('')}
+                          ${!isHidden('Petugas') ? `<td class="p-3 block md:table-cell md:px-4 md:py-2 border-b border-gray-200 dark:border-gray-700 md:border-none text-left">
+                            <div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">Petugas</div>
+                            <div class="ml-3 md:ml-0">${row['Petugas'] || ''}</div>
+                          </td>` : ''}
+                          ${!isHidden('Kondisi') ? `<td class="p-3 block md:table-cell md:px-4 md:py-2 border-b border-gray-200 dark:border-gray-700 md:border-none text-left">
+                            <div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">Kondisi</div>
+                            <div class="ml-3 md:ml-0">${row['Kondisi'] || ''}</div>
+                          </td>` : ''}
+                          ${!isHidden('Status') ? `<td class="p-3 block md:table-cell md:px-4 md:py-2 border-b border-gray-200 dark:border-gray-700 md:border-none text-left">
+                            <div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">Status</div>
+                            <div class="ml-3 md:ml-0">${row['Status'] || ''}</div>
+                          </td>` : ''}
+                          ${!isHidden('Tgl Peminjaman') ? `<td class="p-3 block md:table-cell md:px-4 md:py-2 border-b border-gray-200 dark:border-gray-700 md:border-none text-left">
+                            <div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">Tgl Peminjaman</div>
+                            <div class="flex items-center justify-start ml-3 md:ml-0 gap-2">
+                                <span>${row['Tgl Peminjaman'] || ''}</span>
+                                <button data-action="edit-date" data-field="loan" data-id="${row['ID']}" class="text-blue-500 hover:text-blue-700 p-1"><i class="fas fa-calendar-alt"></i></button>
+                            </div>
+                          </td>` : ''}
+                          ${!isHidden('Tgl Pengembalian') ? `<td class="p-3 block md:table-cell md:px-4 md:py-2 border-b border-gray-200 dark:border-gray-700 md:border-none text-left">
+                            <div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">Tgl Pengembalian</div>
+                            <div class="flex items-center justify-start ml-3 md:ml-0 gap-2">
+                                <span>${row['Tgl Pengembalian'] || ''}</span>
+                                <button data-action="edit-date" data-field="return" data-id="${row['ID']}" class="text-blue-500 hover:text-blue-700 p-1"><i class="fas fa-calendar-alt"></i></button>
+                            </div>
+                          </td>` : ''}
+                          <td class="p-3 block md:table-cell md:px-4 md:py-2 border-b border-gray-200 dark:border-gray-700 md:border-none text-left">
+                            <div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-2">AKSI</div>
+                            <div class="flex items-center justify-start ml-3 md:ml-0 space-x-2">
+                              <button data-action="view" data-id="${row['ID']}" class="text-blue-500 hover:text-blue-700"><i class="fas fa-eye"></i></button>
+                              <button data-action="edit" data-id="${row['ID']}" class="text-green-500 hover:text-green-700"><i class="fas fa-pencil-alt"></i></button>
+                              <button data-action="delete" data-id="${row['ID']}" class="text-red-500 hover:text-red-700"><i class="fas fa-trash-alt"></i></button>
+                            </div>
+                          </td>
+                      </tr>`).join('')}
+                    </tbody>
+                </table>
+                ${data.length === 0 ? '<p class="text-center text-gray-500 dark:text-gray-400 py-8">Tidak ada data yang cocok.</p>' : ''}
+            </div>
+            <div class="flex justify-between items-center mt-4">
+                <span class="text-sm text-gray-700 dark:text-gray-300">Menampilkan ${paginatedData.length > 0 ? (state.currentPage - 1) * state.rowsPerPage + 1 : 0} sampai ${Math.min(state.currentPage * state.rowsPerPage, data.length)} dari ${data.length} data</span>
+                <div class="inline-flex mt-2 xs:mt-0">
+                    <button class="btn btn-secondary rounded-r-none" data-control="prev" ${state.currentPage <= 1 ? 'disabled' : ''}>Prev</button>
+                    <button class="btn btn-secondary rounded-l-none" data-control="next" ${state.currentPage >= totalPages ? 'disabled' : ''}>Next</button>
+                </div>
+            </div>
+          </div>`;
+    };
+
+        const renderTabletCharts = (stats) => {
+        const doughnutOptions = getDoughnutOptions();
+        const isDark = document.documentElement.classList.contains('dark');
+        const colors = {
+            status: ['#facc15', '#4ade80', '#f87171'],
+            brand: ['#60a5fa', '#fb923c', '#a78bfa', '#f87171'],
+            latest: ['#60a5fa', '#fb923c', '#a78bfa', '#f87171', '#34d399']
+        };
+
+        // Chart 1: Status
+        const statusCtx = document.getElementById(`tablet-status-chart`);
+        if (statusCtx) {
+            if (charts.tabletStatus) charts.tabletStatus.destroy();
+            charts.tabletStatus = new Chart(statusCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Dipakai', 'Tersedia', 'Rusak'],
+                    datasets: [{ data: [stats.dipakai, stats.tersedia, stats.rusak || 0], backgroundColor: colors.status, borderColor: isDark ? '#1f2937' : '#fff', borderWidth: 2 }]
+                },
+                options: doughnutOptions
+            });
+        }
+
+        // Chart 2: Merek
+        const brandCtx = document.getElementById(`tablet-brand-chart`);
+        if (brandCtx) {
+            if (charts.tabletBrand) charts.tabletBrand.destroy();
+            const brandLabels = Object.keys(stats.byBrand);
+            const brandData = brandLabels.map(label => stats.byBrand[label]);
+            charts.tabletBrand = new Chart(brandCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: brandLabels,
+                    datasets: [{ data: brandData, backgroundColor: colors.brand, borderColor: isDark ? '#1f2937' : '#fff', borderWidth: 2 }]
+                },
+                options: doughnutOptions
+            });
+        }
+
+        // Card 3: 5 Tablet Terbaru (List)
+        const latestListEl = document.getElementById('tablet-latest-list');
+        if (latestListEl) {
+            if (stats.latest5.length > 0) {
+                latestListEl.innerHTML = stats.latest5.map((item, index) => `
+                  <div class="legend-item text-xs">
+                      <div class="legend-color-box" style="background-color: ${colors.latest[index]};"></div>
+                      <span>${item.name} | (${item.status}) | ${item.duration}</span>
+                  </div>
+              `).join('');
+            } else {
+                latestListEl.innerHTML = '<p class="text-xs text-center text-gray-500">Belum ada data peminjaman.</p>';
+            }
+        }
+    };
+
+    const generateTabletDashboardHtml = (data, state, stats, fieldsConfig) => {
+        const paginatedData = data.slice((state.currentPage - 1) * state.rowsPerPage, state.currentPage * state.rowsPerPage);
+        const totalPages = Math.ceil(data.length / state.rowsPerPage);
+        const hardcodedTabletFields = ['ID', 'Petugas', 'Status', 'Tgl Peminjaman', 'Tgl Pengembalian', 'Aksi', 'RowIndex', 'SheetName', 'Timestamp', 'Diubah Oleh'];
+        const allTabletKeys = (state.originalData && state.originalData.length > 0) ? Object.keys(state.originalData[0]) : (data.length > 0 ? Object.keys(data[0]) : []);
+        const dynamicTabletFields = allTabletKeys.filter(k => {
+            const config = fieldsConfig && fieldsConfig.find(f => f.name.trim().toLowerCase() === k.trim().toLowerCase());
+            if (config && config.hiddenInDashboard) return false;
+            if (config && config.groupName && config.groupName.trim() !== '') return true;
+            if (hardcodedTabletFields.includes(k)) return false;
+            return true;
+        });
+        if (fieldsConfig) {
+            dynamicTabletFields.sort((a, b) => {
+                const indexA = fieldsConfig.findIndex(f => f.name.trim().toLowerCase() === a.trim().toLowerCase());
+                const indexB = fieldsConfig.findIndex(f => f.name.trim().toLowerCase() === b.trim().toLowerCase());
+                if (indexA === -1 && indexB === -1) return 0;
+                if (indexA === -1) return 1;
+                if (indexB === -1) return -1;
+                return indexA - indexB;
+            });
+        }
+        
+        const isGrouped = (fieldName) => {
+            if (!fieldsConfig) return false;
+            const config = fieldsConfig.find(f => f.name.trim().toLowerCase() === fieldName.trim().toLowerCase());
+            return config && config.groupName && config.groupName.trim() !== '';
+        };
+
+        const isHidden = (fieldName) => {
+            if (!fieldsConfig) return false;
+            const config = fieldsConfig.find(f => f.name.trim().toLowerCase() === fieldName.trim().toLowerCase());
+            return (config && config.hiddenInDashboard) || isGrouped(fieldName);
+        };
+
+        let groupedDynamicTabletFields = [];
+        let TabletGroupMap = {};
+        if (fieldsConfig) {
+            fieldsConfig.forEach(f => {
+                if (f.groupName && f.groupName.trim() !== '') {
+                    TabletGroupMap[f.name] = f.groupName;
+                }
+            });
+        }
+        let processedTabletGroups = new Set();
+        dynamicTabletFields.forEach(h => {
+            let gName = TabletGroupMap[h];
+            if (gName && gName.trim() !== '') {
+                if (!processedTabletGroups.has(gName)) {
+                    let fieldsInGroup = dynamicTabletFields.filter(rh => TabletGroupMap[rh] === gName);
+                    groupedDynamicTabletFields.push({ type: 'group', name: gName, fields: fieldsInGroup });
+                    processedTabletGroups.add(gName);
+                }
+            } else {
+                groupedDynamicTabletFields.push({ type: 'single', name: h });
+            }
+        });
+
+        const headers = [];
+        headers.push(...groupedDynamicTabletFields);
+        if (!isHidden('Petugas')) headers.push('Petugas');
+        if (!isHidden('Status')) headers.push('Status');
+        if (!isHidden('Tgl Peminjaman')) headers.push('Tgl Peminjaman');
+        if (!isHidden('Tgl Pengembalian')) headers.push('Tgl Pengembalian');
+        headers.push('Aksi');
+
+        const createLegendHtml = (data, colors) => {
+            let itemsHtml = Object.entries(data).slice(0, 4).map(([label, value], index) => `
+              <div class="legend-item">
+                  <div class="legend-color-box" style="background-color: ${colors[index % colors.length]};"></div>
+                  <span>${label}: <strong>${value}</strong></span>
+              </div>`).join('');
+            if (Object.keys(data).length > 4) {
+                itemsHtml += `<div class="mt-1 text-xs text-gray-400 dark:text-gray-500">+${Object.keys(data).length - 4} lainnya</div>`;
+            }
+            return `<div class="chart-legend">${itemsHtml}</div>`;
+        };
+
+        return `
+          <div class="mb-2 flex items-center justify-between">
+            <h2 class="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                <i class="fas fa-tablet-alt text-indigo-500"></i>
+                Dashboard Tablet
+            </h2>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+              <!-- Status Card -->
+              <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md flex items-center gap-4">
+                  <div class="doughnut-chart-container">
+                      <canvas id="tablet-status-chart"></canvas>
+                      <div class="chart-center-text"><span class="value">${stats.total}</span><br><span class="label">Total</span></div>
+                  </div>
+                  <div class="flex-grow">
+                      <h4 class="font-semibold mb-2">Status Tablet</h4>
+                      <div class="chart-legend text-sm">
+                          <p>Tablet Dipakai: <strong>${stats.dipakai}</strong></p>
+                          <p>Tablet Tersedia: <strong>${stats.tersedia}</strong></p>
+                          <p>Tablet Rusak: <strong>${stats.rusak || 0}</strong></p>
+                      </div>
+                  </div>
+              </div>
+              <!-- Merek Card -->
+              <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md flex items-center gap-4">
+                  <div class="doughnut-chart-container">
+                       <canvas id="tablet-brand-chart"></canvas>
+                       <div class="chart-center-text"><span class="value">${Object.keys(stats.byBrand).length}</span><br><span class="label">Merek</span></div>
+                  </div>
+                  <div class="flex-grow">
+                      <h4 class="font-semibold mb-2">Merek</h4>
+                      ${createLegendHtml(stats.byBrand, ['#60a5fa', '#fb923c', '#a78bfa', '#f87171'])}
+                  </div>
+              </div>
+              <!-- 5 Tablet Terbaru -->
+              <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md flex items-center gap-4">
+                  <div class="doughnut-chart-container">
+                       <div class="w-full h-full rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center">
+                           <i class="fas fa-history text-3xl text-indigo-500"></i>
+                       </div>
+                       <div class="chart-center-text"><span class="value">5</span><br><span class="label">Terbaru</span></div>
+                  </div>
+                  <div class="flex-grow">
+                      <h4 class="font-semibold mb-2">5 Tablet Terbaru</h4>
+                      <div id="tablet-latest-list" class="chart-legend space-y-1">
+                          <!-- Legend will be populated by JS -->
+                      </div>
+                  </div>
+              </div>
+          </div>
+
+          <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+            <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
+                <div class="flex flex-wrap items-center w-full md:w-auto gap-2">
+                    <div class="relative flex-grow w-full md:w-auto">
+                        <input type="text" placeholder="Cari..." class="form-input pl-10 pr-10 w-full" value="${state.searchTerm}">
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                        ${state.searchTerm ? `<button type="button" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none" onclick="const i=this.parentElement.querySelector('input'); i.value=''; i.dispatchEvent(new Event('input', {bubbles:true}))"><i class="fas fa-times"></i></button>` : ''}
+                    </div>
+                    <button id="scan-qr-button" class="btn btn-secondary flex-shrink-0 md:px-3.5"><i class="fas fa-qrcode"></i></button>
+                    <button data-action="import-excel" class="btn btn-secondary flex-1 md:flex-initial text-center justify-center text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300"><i class="fas fa-file-import mr-1.5"></i>Impor</button>
+                    <button data-action="export-excel" class="btn btn-secondary flex-1 md:flex-initial text-center justify-center text-xs bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-300"><i class="fas fa-file-excel mr-1.5"></i>Ekspor</button>
+                    <button data-action="export-log-aktivitas" class="btn btn-secondary flex-1 md:flex-initial text-center justify-center text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300"><i class="fas fa-download mr-1.5"></i>Log</button>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-2">
+                        <span>Tampilkan</span>
+                        <select class="form-select !p-2 !w-auto" data-control="rows-per-page">${[5, 10, 25, 50, 100].map(n => `<option ${state.rowsPerPage == n ? 'selected' : ''}>${n}</option>`).join('')}</select>
+                        <span>data</span>
+                    </div>
+                </div>
+            </div>
+            <div class="overflow-x-auto overflow-y-auto max-h-[60vh] relative">
+                <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+                    <thead class="sticky top-0 z-20 text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 hidden md:table-header-group">
+                        <tr>${headers.map(col => {
+                const h = col.name ? col.name.toUpperCase() : col.toUpperCase();
+                const filterKey = col.name || col;
+                const colType = col.type || 'single';
+                if (['Status', 'Tgl Peminjaman', 'Tgl Pengembalian', 'Aksi', 'STATUS', 'TGL PEMINJAMAN', 'TGL PENGEMBALIAN', 'AKSI'].includes(h.trim())) {
+                    if (h.trim().toUpperCase() === 'STATUS') {
+                        return `<th scope="col" class="px-4 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>${h}</div>
+                    <select class="form-select text-xs !p-1.5 mt-2 w-full font-normal" data-control="status-filter">
+                                ${typeof getStatusFilterOptionsHtml === 'function' ? getStatusFilterOptionsHtml('Tablet', state.statusFilter) : `
+                                <option value="all" ${state.statusFilter === 'all' ? 'selected' : ''}>SEMUA STATUS</option>
+                                <option value="DIPAKAI" ${state.statusFilter === 'DIPAKAI' ? 'selected' : ''}>DIPAKAI</option>
+                                <option value="TERSEDIA" ${state.statusFilter === 'TERSEDIA' ? 'selected' : ''}>TERSEDIA</option>
+                                <option value="RUSAK" ${state.statusFilter === 'RUSAK' ? 'selected' : ''}>RUSAK</option>
+                                `}
+                            </select>
+                </div>
+            </th>
+                        </th>`;
+                    }
+                    return `<th scope="col" class="px-4 py-3 align-top"><div>${h}</div></th>`;
+                }
+                return `<th scope="col" class="px-4 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>${h}</div>
+                    <div class="relative w-full mt-2">
+                        <input type="text" class="form-input text-xs !py-1.5 !pl-1.5 !pr-7 w-full font-normal" data-col-filter="${filterKey}" placeholder="Cari..." value="${state.columnFilters?.[filterKey] || ''}">
+                        ${state.columnFilters?.[filterKey] ? `<i class="fas fa-times absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600" onclick="this.previousElementSibling.value=''; this.previousElementSibling.dispatchEvent(new Event('input', {bubbles:true}))"></i>` : ''}
+                    </div>
+                
+                </div>
+            `;
+            }).join('')}</tr>
+                    </thead>
+                    <tbody>${paginatedData.map(row => `
+                      <tr class="block md:table-row bg-white border md:border-gray-200 dark:border-gray-700 md:border-b dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-600 mb-4 md:mb-0 rounded-lg shadow-md md:shadow-none">
+                          
+                          ${groupedDynamicTabletFields.map(col => `
+                          <td class="p-3 block md:table-cell md:px-4 md:py-2 border-b border-gray-200 dark:border-gray-700 md:border-none text-left text-xs">
+                              ${col.type === 'group' ? 
+                                `<div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">${col.name}</div>
+                                <div class="flex flex-col gap-1">
+                                    ${col.fields.map(f => `
+                                    <div class="flex flex-row md:block items-start ml-3 md:ml-0">
+                                        <span class="w-[40%] md:w-auto text-gray-600 md:text-gray-900 md:font-bold flex-shrink-0">${f}</span>
+                                        <span class="w-[60%] md:w-auto md:inline"><span class="md:hidden mr-1">:</span>${row[f] || '-'}</span>
+                                    </div>`).join('')}
+                                </div>` : 
+                                `<div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">${col.name}</div>
+                                <div class="ml-3 md:ml-0">${row[col.name] || ''}</div>`
+                              }
+                          </td>`).join('')}
+                          ${!isHidden('Petugas') ? `<td class="p-3 block md:table-cell md:px-4 md:py-2 border-b border-gray-200 dark:border-gray-700 md:border-none text-left">
+                            <div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">Petugas</div>
+                            <div class="ml-3 md:ml-0">${row['Petugas'] || ''}</div>
+                          </td>` : ''}
+                          ${!isHidden('Status') ? `<td class="p-3 block md:table-cell md:px-4 md:py-2 border-b border-gray-200 dark:border-gray-700 md:border-none text-left">
+                            <div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">Status</div>
+                            <div class="ml-3 md:ml-0">${row['Status'] || ''}</div>
+                          </td>` : ''}
+                          ${!isHidden('Tgl Peminjaman') ? `<td class="p-3 block md:table-cell md:px-4 md:py-2 border-b border-gray-200 dark:border-gray-700 md:border-none text-left">
+                            <div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">Tgl Peminjaman</div>
+                            <div class="flex items-center justify-start ml-3 md:ml-0 gap-2">
+                                <span>${row['Tgl Peminjaman'] || ''}</span>
+                                <button data-action="edit-date" data-field="loan" data-id="${row['ID']}" class="text-blue-500 hover:text-blue-700 p-1"><i class="fas fa-calendar-alt"></i></button>
+                            </div>
+                          </td>` : ''}
+                          ${!isHidden('Tgl Pengembalian') ? `<td class="p-3 block md:table-cell md:px-4 md:py-2 border-b border-gray-200 dark:border-gray-700 md:border-none text-left">
+                            <div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">Tgl Pengembalian</div>
+                            <div class="flex items-center justify-start ml-3 md:ml-0 gap-2">
+                                <span>${row['Tgl Pengembalian'] || ''}</span>
+                                <button data-action="edit-date" data-field="return" data-id="${row['ID']}" class="text-blue-500 hover:text-blue-700 p-1"><i class="fas fa-calendar-alt"></i></button>
+                            </div>
+                          </td>` : ''}
+                          <td class="p-3 block md:table-cell md:px-4 md:py-2 border-b border-gray-200 dark:border-gray-700 md:border-none text-left">
+                            <div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-2">AKSI</div>
+                            <div class="flex items-center justify-start ml-3 md:ml-0 space-x-2">
+                              <button data-action="view" data-id="${row['ID']}" class="text-blue-500 hover:text-blue-700"><i class="fas fa-eye"></i></button>
+                              <button data-action="edit" data-id="${row['ID']}" class="text-green-500 hover:text-green-700"><i class="fas fa-pencil-alt"></i></button>
+                              <button data-action="delete" data-id="${row['ID']}" class="text-red-500 hover:text-red-700"><i class="fas fa-trash-alt"></i></button>
+                            </div>
+                          </td>
+                      </tr>`).join('')}
+                    </tbody>
+                </table>
+                ${data.length === 0 ? '<p class="text-center text-gray-500 dark:text-gray-400 py-8">Tidak ada data yang cocok.</p>' : ''}
+            </div>
+            <div class="flex justify-between items-center mt-4">
+                <span class="text-sm text-gray-700 dark:text-gray-300">Menampilkan ${paginatedData.length > 0 ? (state.currentPage - 1) * state.rowsPerPage + 1 : 0} sampai ${Math.min(state.currentPage * state.rowsPerPage, data.length)} dari ${data.length} data</span>
+                <div class="inline-flex mt-2 xs:mt-0">
+                    <button class="btn btn-secondary rounded-r-none" data-control="prev" ${state.currentPage <= 1 ? 'disabled' : ''}>Prev</button>
+                    <button class="btn btn-secondary rounded-l-none" data-control="next" ${state.currentPage >= totalPages ? 'disabled' : ''}>Next</button>
+                </div>
+            </div>
+          </div>`;
+    };
+
+</script>
+
+
+
+
+
+
+
+

@@ -1,0 +1,8 @@
+**/**
+!appsscript.json
+!*.gs
+!*.html
+index.html
+build-demo.js
+mock-backend.js
+

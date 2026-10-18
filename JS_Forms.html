@@ -1,0 +1,258 @@
+<script>
+    // --- FORMS LOGIC ---
+    // Handles dynamic form generation, submission, import, and template download
+
+    function getFormFieldsHtml(type) {
+        const hasConfig = allData && allData[type] && allData[type].config && allData[type].config.length > 0;
+        
+        // Gunakan template bawaan HANYA JIKA tidak ada konfigurasi kustom
+        if (!hasConfig && formTemplates[type]) {
+            let tplHtml = formTemplates[type];
+            // Jika ada statusConfig dari menuData atau allData, sesuaikan dropdown Status
+            const statusCfg = (allData && allData[type] && allData[type].config) 
+                ? allData[type].config.find(f => f.name.toLowerCase() === 'status')
+                : null;
+            if (statusCfg && statusCfg.options) {
+                const optArr = statusCfg.options.split(',').map(o => o.trim()).filter(Boolean);
+                if (optArr.length > 0) {
+                    const newOpts = optArr.map(o => {
+                        const sel = o.toLowerCase().includes('pakai') ? 'selected' : '';
+                        return `<option value="${o}" ${sel}>${o}</option>`;
+                    }).join('');
+                    tplHtml = tplHtml.replace(/<select\s+name=["']status["'][^>]*>[\s\S]*?<\/select>/i, 
+                        `<select name="status" class="form-select mt-1" required>${newOpts}</select>`);
+                }
+            }
+            return { html: tplHtml, generated: true };
+        }
+
+        if (allData && allData[type]) {
+            const headers = allData[type].headers || [];
+            const config = allData[type].config || [];
+
+            if (config.length > 0) {
+                let dynamicHtml = '<div class="form-grid">';
+                let hasStatusField = false;
+
+                config.forEach(field => {
+                    const nameAttr = String(field.name).replace(/\s/g, "").toLowerCase();
+                    const label = field.name;
+
+                    if (label.toLowerCase() === 'status') hasStatusField = true;
+
+                    if (field.type === 'dropdown') {
+                        const optArr = field.options ? field.options.split(',').map(o => o.trim()) : ['-'];
+                        let optsHtml = optArr.map(o => {
+                            const isStatus = label.toLowerCase() === 'status';
+                            const isDipakai = o.toLowerCase().includes('pakai');
+                            const selectedAttr = (isStatus && isDipakai) ? 'selected' : '';
+                            return `<option value="${o}" ${selectedAttr}>${o}</option>`;
+                        }).join('');
+                        dynamicHtml += `<div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">${label}</label>
+                            <select name="${nameAttr}" class="form-select mt-1" required>
+                                ${optsHtml}
+                            </select>
+                        </div>`;
+                    } else if (field.type === 'textarea') {
+                        dynamicHtml += `<div class="col-span-full"><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">${label}</label><textarea name="${nameAttr}" class="form-input mt-1"></textarea></div>`;
+                    } else {
+                        const inputType = field.type || 'text';
+                        dynamicHtml += `<div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">${label}</label><input type="${inputType}" name="${nameAttr}" class="form-input mt-1"></div>`;
+                    }
+                });
+
+                // Tambahkan Status otomatis karena Status wajib tapi disembunyikan dari config UI
+                if (!hasStatusField) {
+                    dynamicHtml += `<div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
+                        <select name="status" class="form-select mt-1" required>
+                            <option value="DIPAKAI" selected>DIPAKAI</option>
+                            <option value="TERSEDIA">TERSEDIA</option>
+                            <option value="RUSAK">RUSAK</option>
+                        </select>
+                    </div>`;
+                }
+
+                dynamicHtml += '</div>';
+                return { html: dynamicHtml, generated: true };
+            } else if (headers.length > 0) {
+                let dynamicHtml = '<div class="form-grid">';
+                headers.forEach(header => {
+                    if (['ID', 'Tgl Peminjaman', 'Tgl Pengembalian', 'Diubah Oleh', 'Timestamp'].includes(header)) return;
+
+                    let inputType = 'text';
+                    let nameAttr = String(header).replace(/\s/g, "").toLowerCase();
+
+                    if (header.toLowerCase().includes('tanggal') || header.toLowerCase().includes('tgl')) inputType = 'date';
+                    if (header.toLowerCase() === 'qty') inputType = 'number';
+
+                    if (header.toLowerCase() === 'status') {
+                        dynamicHtml += `<div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">${header}</label>
+                            <select name="${nameAttr}" class="form-select mt-1" required>
+                                <option value="DIPAKAI" selected>DIPAKAI</option>
+                                <option value="TERSEDIA">TERSEDIA</option>
+                                <option value="RUSAK">RUSAK</option>
+                            </select>
+                        </div>`;
+                    } else if (header.toLowerCase() === 'keterangan') {
+                        dynamicHtml += `<div class="col-span-full"><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">${header}</label><textarea name="${nameAttr}" class="form-input mt-1"></textarea></div>`;
+                    } else {
+                        dynamicHtml += `<div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">${header}</label><input type="${inputType}" name="${nameAttr}" class="form-input mt-1"></div>`;
+                    }
+                });
+                dynamicHtml += '</div>';
+                return { html: dynamicHtml, generated: true };
+            }
+        }
+        return { html: '<p class="text-gray-500">Konfigurasi form tidak ditemukan.</p>', generated: false };
+    }
+
+    function setupForms(navigateTo) {
+        const assetTypeSelect = document.getElementById('assetType');
+        const formContainer = document.getElementById('form-fields-container');
+        const assetForm = document.getElementById('assetForm');
+        const formButtons = document.getElementById('form-buttons');
+
+        // Import/Export/Template Buttons
+        const btnImport = document.getElementById('input-import-btn');
+        const btnTemplate = document.getElementById('input-download-template-btn'); // Renamed ID from Export to Template
+        const fileInput = document.getElementById('import-file');
+
+        if (!assetTypeSelect || !formContainer) return;
+        // 1. Handle Asset Type Change
+        assetTypeSelect.addEventListener('change', () => {
+            const type = assetTypeSelect.value;
+            formContainer.innerHTML = ''; // Clear previous form
+
+            if (type) {
+                const formResult = getFormFieldsHtml(type);
+                if (formResult.generated) {
+                    formContainer.innerHTML = formResult.html;
+                }
+                let generated = formResult.generated;
+
+                if (generated) {
+                    formButtons.classList.remove('hidden');
+                    if (btnImport) {
+                        btnImport.classList.remove('hidden');
+                        btnImport.classList.add('inline-flex');
+                    }
+                    if (btnTemplate) {
+                        btnTemplate.classList.remove('hidden');
+                        btnTemplate.classList.add('inline-flex');
+                    }
+                } else {
+                    formButtons.classList.add('hidden');
+                    if (btnImport) {
+                        btnImport.classList.add('hidden');
+                        btnImport.classList.remove('inline-flex');
+                    }
+                    if (btnTemplate) {
+                        btnTemplate.classList.add('hidden');
+                        btnTemplate.classList.remove('inline-flex');
+                    }
+                }
+            } else {
+                formButtons.classList.add('hidden');
+                if (btnImport) {
+                    btnImport.classList.add('hidden');
+                    btnImport.classList.remove('inline-flex');
+                }
+                if (btnTemplate) {
+                    btnTemplate.classList.add('hidden');
+                    btnTemplate.classList.remove('inline-flex');
+                }
+            }
+        });
+
+        // 2. Handle Form Submission
+        if (assetForm) {
+            assetForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const type = assetTypeSelect.value;
+                if (!type) {
+                    showToast('Pilih jenis aset terlebih dahulu!', 'warning');
+                    return;
+                }
+
+                const submitBtn = assetForm.querySelector('button[type="submit"]');
+                const originalBtnText = submitBtn.innerHTML;
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Menyimpan...';
+
+                // Collect Data
+                const formData = new FormData(assetForm);
+                const dataObject = Object.fromEntries(formData.entries());
+
+                // PENTING: Tambahkan assetType karena select berada di luar form
+                dataObject.assetType = type;
+
+                // Call Server
+                window.google.script.run
+                    .withSuccessHandler((response) => {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = originalBtnText;
+
+                        if (response.status === 'success') {
+                            showToast(`Data ${type} berhasil disimpan!`, 'success');
+                            assetForm.reset();
+                            // Trigger background refresh to keep the grid and form dynamic cache intact
+                            window.google.script.run.withSuccessHandler(compactData => {
+                                if (compactData && !compactData.error) {
+                                    localStorage.setItem('ALL_DATA_CACHE', JSON.stringify(compactData));
+                                    allData = unzipData(compactData);
+                                }
+                                if (typeof applyMenuConfigToAllData === 'function') applyMenuConfigToAllData();
+                            }).getAllData();
+                        } else {
+                            showToast('Gagal: ' + response.message, 'error');
+                        }
+                    })
+                    .withFailureHandler((error) => {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = originalBtnText;
+                        showToast('Gagal menyimpan: ' + error.message, 'error');
+                    })
+                    .saveData(dataObject, currentUser);
+            });
+        }
+
+        // 3. Handle Import Button
+        if (btnImport && fileInput) {
+            btnImport.addEventListener('click', () => {
+                window.currentImportAssetType = assetTypeSelect.value; // Context
+                fileInput.value = ''; // Reset
+                fileInput.click();
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                // Call Import Logic (defined in JS_Actions.html)
+                if (typeof handleImportFromExcel === 'function') {
+                    handleImportFromExcel(file, assetTypeSelect.value);
+                } else {
+                    showToast('Fungsi import belum dimuat.', 'error');
+                }
+            });
+        }
+
+        // 4. Handle Template Download Button
+        if (btnTemplate) {
+            btnTemplate.addEventListener('click', () => {
+                const type = assetTypeSelect.value;
+                if (!type) {
+                    showToast('Pilih jenis aset terlebih dahulu!', 'warning');
+                    return;
+                }
+
+                // Call Template Logic (defined in JS_Actions.html)
+                if (typeof handleDownloadTemplate === 'function') {
+                    handleDownloadTemplate(type, btnTemplate);
+                } else {
+                    showToast('Fungsi download template belum dimuat.', 'error');
+                }
+            });
+        }
+    }
+</script>

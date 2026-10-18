@@ -1,0 +1,1222 @@
+<script>
+
+    const generateDynamicTableHtml = (dataRows, fieldsConfig, state) => {
+        let groupedHeaders = [];
+        const processedGroups = new Set();
+        const allKeys = dataRows.length > 0 ? Object.keys(dataRows[0]) : [];
+        const systemEnd = ["Petugas", "Status", "Tgl Peminjaman", "Tgl Pengembalian", "Timestamp", "Diubah Oleh", "RowIndex", "SheetName", "ID", "Aksi"];
+
+        if (fieldsConfig && fieldsConfig.length > 0) {
+            fieldsConfig.forEach(f => {
+                if (f.hiddenInDashboard || systemEnd.includes(f.name)) return;
+                if (f.groupName) {
+                    const gName = f.groupName.trim();
+                    if (!processedGroups.has(gName)) {
+                        const groupFields = fieldsConfig.filter(cf => cf.groupName && cf.groupName.trim() === gName && !cf.hiddenInDashboard).map(cf => cf.name);
+                        groupedHeaders.push({ type: 'group', name: gName, fields: groupFields });
+                        processedGroups.add(gName);
+                    }
+                } else {
+                    groupedHeaders.push({ type: 'single', name: f.name });
+                }
+            });
+        } else {
+            allKeys.forEach(k => {
+                if (!systemEnd.includes(k)) {
+                    groupedHeaders.push({ type: 'single', name: k });
+                }
+            });
+        }
+        
+        if (allKeys.includes('Petugas')) {
+            groupedHeaders.push({ type: 'single', name: 'Petugas' });
+        }
+        groupedHeaders.push({ type: 'single', name: 'Status' });
+        groupedHeaders.push({ type: 'single', name: 'Tgl Peminjaman' });
+        groupedHeaders.push({ type: 'single', name: 'Tgl Pengembalian' });
+
+        groupedHeaders.push({ type: 'action', name: 'Aksi' });
+
+        const theadHtml = `<thead class="sticky top-0 z-20 text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 hidden md:table-header-group">
+            <tr>${groupedHeaders.map(col => {
+                const h = col.name;
+                if (col.type === 'action') {
+                    return `<th scope="col" class="px-4 py-3 align-top"><div>${h}</div></th>`;
+                }
+                if (h.toUpperCase() === 'STATUS') {
+                    return `<th scope="col" class="px-4 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>${h}</div>
+                    <select class="form-select text-xs !p-1.5 mt-2 w-full font-normal" data-control="status-filter">
+                            ${typeof getStatusFilterOptionsHtml === 'function' ? getStatusFilterOptionsHtml(state.assetType || '', state.statusFilter) : `
+                            <option value="all" ${state.statusFilter === 'all' ? 'selected' : ''}>SEMUA STATUS</option>
+                            <option value="DIPAKAI" ${state.statusFilter === 'DIPAKAI' ? 'selected' : ''}>DIPAKAI</option>
+                            <option value="TERSEDIA" ${state.statusFilter === 'TERSEDIA' ? 'selected' : ''}>TERSEDIA</option>
+                            <option value="RUSAK" ${state.statusFilter === 'RUSAK' ? 'selected' : ''}>RUSAK</option>
+                            `}
+                        </select>
+                </div>
+            </th>
+                    </th>`;
+                }
+                if (h.toUpperCase() === 'KONDISI') {
+                    return `<th scope="col" class="px-4 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>${h}</div>
+                    <select class="form-select text-xs !p-1.5 mt-2 w-full font-normal" data-filter="kondisi">
+                            <option value="all" ${state.kondisiFilter === 'all' ? 'selected' : ''}>SEMUA KONDISI</option>
+                            <option value="Baru" ${state.kondisiFilter === 'Baru' ? 'selected' : ''}>BARU</option>
+                            <option value="Bisa Dipakai" ${state.kondisiFilter === 'Bisa Dipakai' ? 'selected' : ''}>BISA DIPAKAI</option>
+                            <option value="Rusak" ${state.kondisiFilter === 'Rusak' ? 'selected' : ''}>RUSAK</option>
+                        </select>
+                </div>
+            </th>
+                    </th>`;
+                }
+                if (['TGL PEMINJAMAN', 'TGL PENGEMBALIAN'].includes(h.toUpperCase())) {
+                    return `<th scope="col" class="px-4 py-3 align-top h-full align-middle text-center">
+                <div class="flex flex-col justify-between h-full min-h-[4rem] items-center">
+                    <div>${h}</div>
+                    <div class="relative w-full mt-2">
+                        <input type="text" class="form-input text-xs !py-1.5 !pl-1.5 !pr-7 w-full font-normal" data-col-filter="${h}" placeholder="Cari..." value="${state.columnFilters?.[h] || ''}">
+                        ${state.columnFilters?.[h] ? `<i class="fas fa-times absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600" onclick="this.previousElementSibling.value=''; this.previousElementSibling.dispatchEvent(new Event('input', {bubbles:true}))"></i>` : ''}
+                    </div>
+                </div>
+            </th>`;
+                }
+                return `<th scope="col" class="px-4 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>${h}</div>
+                    <div class="relative w-full mt-2">
+                        <input type="text" class="form-input text-xs !py-1.5 !pl-1.5 !pr-7 w-full font-normal" data-col-filter="${h}" placeholder="Cari..." value="${state.columnFilters?.[h] || ''}">
+                        ${state.columnFilters?.[h] ? `<i class="fas fa-times absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600" onclick="this.previousElementSibling.value=''; this.previousElementSibling.dispatchEvent(new Event('input', {bubbles:true}))"></i>` : ''}
+                    </div>
+                
+                </div>
+            `;
+            }).join('')}</tr>
+        </thead>`;
+
+        const tbodyHtml = `<tbody>${dataRows.map(row => `
+            <tr class="block md:table-row bg-white border md:border-gray-200 dark:border-gray-700 md:border-b dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-600 mb-4 md:mb-0 rounded-lg shadow-md md:shadow-none">
+                ${groupedHeaders.map(col => {
+                    const h = col.name;
+                    if (col.type === 'action') {
+                        return `<td class="p-3 block md:table-cell md:px-4 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none text-left">
+                            <div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-2">AKSI</div>
+                            <div class="flex items-center justify-start ml-3 md:ml-0 space-x-2">
+                                <button data-action="view" data-id="${row['ID']}" class="text-blue-500 hover:text-blue-700"><i class="fas fa-eye"></i></button>
+                                <button data-action="edit" data-id="${row['ID']}" class="text-yellow-500 hover:text-yellow-700"><i class="fas fa-edit"></i></button>
+                                <button data-action="delete" data-id="${row['ID']}" class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button>
+                            </div>
+                        </td>`;
+                    } else if (col.type === 'group') {
+                        return `<td class="p-3 block md:table-cell md:px-4 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none text-left">
+                            <div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">${h}</div>
+                            <div class="flex flex-col gap-1 text-xs">
+                                ${col.fields.map(f => `
+                                <div class="flex flex-row md:block items-start ml-3 md:ml-0">
+                                    <span class="w-[40%] md:w-auto text-gray-600 md:text-gray-900 md:font-bold flex-shrink-0">${f}</span>
+                                    <span class="w-[60%] md:w-auto md:inline"><span class="md:hidden mr-1">:</span>${row[f] || '-'}</span>
+                                </div>`).join('')}
+                            </div>
+                        </td>`;
+                    } else {
+                        if (col.name.toUpperCase() === 'STATUS') {
+                            return `<td class="p-3 block md:table-cell md:px-4 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none text-left">
+                                <div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">${h}</div>
+                                <div class="ml-3 md:ml-0">${row[col.name] || ''}</div>
+                            </td>`;
+                        }
+                        if (col.name.toUpperCase() === 'TGL PEMINJAMAN') {
+                            return `<td class="p-3 block md:table-cell md:px-4 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none text-left">
+                                <div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">${h}</div>
+                                <div class="flex items-center justify-start ml-3 md:ml-0 gap-2">
+                                    <span>${row[col.name] || ''}</span>
+                                    <button data-action="edit-date" data-field="loan" data-id="${row['ID']}" class="text-blue-500 hover:text-blue-700 p-1"><i class="fas fa-calendar-alt"></i></button>
+                                </div>
+                            </td>`;
+                        }
+                        if (col.name.toUpperCase() === 'TGL PENGEMBALIAN') {
+                            return `<td class="p-3 block md:table-cell md:px-4 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none text-left">
+                                <div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">${h}</div>
+                                <div class="flex items-center justify-start ml-3 md:ml-0 gap-2">
+                                    <span>${row[col.name] || ''}</span>
+                                    <button data-action="edit-date" data-field="return" data-id="${row['ID']}" class="text-blue-500 hover:text-blue-700 p-1"><i class="fas fa-calendar-alt"></i></button>
+                                </div>
+                            </td>`;
+                        }
+                        return `<td class="p-3 block md:table-cell md:px-4 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none text-left">
+                            <div class="md:hidden font-bold uppercase text-gray-700 dark:text-gray-300 mb-1">${h}</div>
+                            <div class="ml-3 md:ml-0 inline-block break-words">${row[col.name] || ''}</div>
+                        </td>`;
+                    }
+                }).join('')}
+            </tr>
+        `).join('')}</tbody>`;
+
+        return `<table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">${theadHtml}${tbodyHtml}</table>`;
+    };
+
+    // --- ASSET SPECIFIC RENDERERS ---
+
+    // --- PC ---
+    const renderPcCharts = (stats) => {
+        const doughnutOptions = getDoughnutOptions();
+
+        // Consistent color maps
+        const osColorMap = {
+            'Windows 11 Pro': '#60a5fa',         // Blue
+            'Windows 10 Pro': '#34d399',         // Teal/Green
+            'Windows 7 Pro': '#fb923c',          // Orange
+            'Windows Server 2012 R2': '#f87171', // Red
+            'Windows XP': '#a78bfa'              // Purple
+        };
+        const floorColorMap = {
+            'Lantai 10': '#93c5fd',
+            'Lantai 11': '#34d399',
+            'Lantai 9': '#fb923c',
+            'Semarang': '#c4b5fd'
+        };
+        const defaultColors = ['#93c5fd', '#34d399', '#c4b5fd', '#a78bfa', '#fca5a5', '#fb923c', '#f87171'];
+
+        const generateLegend = (chartId, chart) => {
+            const legendContainer = document.getElementById(chartId + '-legend');
+            if (!legendContainer) return;
+
+            const legendItems = chart.data.labels.map((label, index) => {
+                const color = chart.data.datasets[0].backgroundColor[index];
+                const value = chart.data.datasets[0].data[index];
+                if (value === 0 || !label) return '';
+
+                if (chartId === 'totalPcChart' && stats.statusByFloor && stats.statusByFloor[label]) {
+                    const s = stats.statusByFloor[label];
+                    const getValue = (key) => {
+                        const k = Object.keys(s).find(k => k.toUpperCase() === key.toUpperCase());
+                        const val = k ? s[k] : 0;
+                        return (val === 0 || !val) ? '-' : val;
+                    };
+
+                    const dipakai = getValue('DIPAKAI');
+                    const tersedia = getValue('TERSEDIA');
+                    const rusak = getValue('RUSAK');
+
+                    return `
+                        <div class="flex items-start md:items-center mb-2 last:mb-0 pb-1.5 border-b border-gray-100 dark:border-gray-700/50 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                            <span class="w-2 h-2 rounded-sm mr-2 mt-1 md:mt-0 flex-shrink-0" style="background-color: ${color};"></span>
+                            <div class="flex flex-col md:flex-row md:items-center text-[9px] md:text-[8.5px] text-gray-500 dark:text-gray-400 flex-grow min-w-0">
+                                <span class="font-bold text-gray-700 dark:text-gray-200 w-full md:w-24 truncate mb-0.5 md:mb-0">${label}</span>
+                                <div class="grid grid-cols-3 gap-1 md:gap-2 w-full md:w-auto flex-grow md:ml-2 items-center">
+                                    <div class="whitespace-nowrap">Dipakai: <strong class="text-gray-900 dark:text-white">${dipakai}</strong></div>
+                                    <div class="whitespace-nowrap flex items-center">
+                                        <span class="hidden md:inline opacity-20 text-gray-400 mr-2 md:mr-3">|</span> 
+                                        <span>Tersedia: <strong class="text-gray-900 dark:text-white">${tersedia}</strong></span>
+                                    </div>
+                                    <div class="whitespace-nowrap flex items-center">
+                                        <span class="hidden md:inline opacity-20 text-gray-400 mr-2 md:mr-3">|</span> 
+                                        <span>Rusak: <strong class="text-gray-900 dark:text-white">${rusak}</strong></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                return `
+                  <div class="flex items-center mb-0.5 last:mb-0">
+                      <span class="w-2 h-2 rounded-sm mr-2 flex-shrink-0" style="background-color: ${color};"></span>
+                      <span class="text-[8px] text-gray-600 dark:text-gray-400 truncate">${label}: <strong class="text-gray-800 dark:text-gray-200">${value}</strong></span>
+                  </div>
+                `;
+            }).join('');
+
+            legendContainer.innerHTML = legendItems;
+        };
+
+        const allFloors = Object.keys(stats.countByFloor || {}).sort();
+
+        // 1. Total PC by Floor Chart
+        const totalPcCtx = document.getElementById('totalPcChart');
+        if (totalPcCtx && stats.countByFloor) {
+            if (charts.totalPc) charts.totalPc.destroy();
+            const floorData = stats.countByFloor || {};
+            const sortedLabels = allFloors;
+            const sortedData = sortedLabels.map(label => floorData[label]);
+            const sortedColors = sortedLabels.map(label => floorColorMap[label] || defaultColors[0]);
+            charts.totalPc = new Chart(totalPcCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: sortedLabels,
+                    datasets: [{
+                        data: sortedData,
+                        backgroundColor: sortedColors,
+                        borderColor: document.documentElement.classList.contains('dark') ? '#1f2937' : '#fff'
+                    }]
+                },
+                options: doughnutOptions
+            });
+            generateLegend('totalPcChart', charts.totalPc);
+        }
+
+        // 2. OS by Floor Charts (Dynamic Loop)
+        const osSortOrder = ['Windows 11 Pro', 'Windows 10 Pro', 'Windows 7 Pro', 'Windows XP', 'Windows Server 2012 R2'];
+        allFloors.forEach(floor => {
+            const chartId = `osChart${floor.replace(/\s+/g, '')}`;
+            const ctx = document.getElementById(chartId);
+            if (ctx && stats.osByFloor && stats.osByFloor[floor]) {
+                if (charts[chartId]) charts[chartId].destroy();
+                const osData = stats.osByFloor[floor] || {};
+                const sortedOsLabels = osSortOrder.filter(os => osData[os] >= 0); // Keep 0 if mentioned in order, or filter > 0? Image shows only > 0.
+                const filteredOsLabels = sortedOsLabels.filter(os => osData[os] > 0);
+                const sortedOsData = filteredOsLabels.map(label => osData[label]);
+                const sortedOsColors = filteredOsLabels.map(label => osColorMap[label] || defaultColors[0]);
+
+                charts[chartId] = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: filteredOsLabels,
+                        datasets: [{
+                            data: sortedOsData,
+                            backgroundColor: sortedOsColors,
+                            borderColor: document.documentElement.classList.contains('dark') ? '#1f2937' : '#fff'
+                        }]
+                    },
+                    options: doughnutOptions
+                });
+                generateLegend(chartId, charts[chartId]);
+            } else if (ctx) {
+                const context = ctx.getContext('2d');
+                context.clearRect(0, 0, ctx.width, ctx.height);
+                if (charts[chartId]) charts[chartId].destroy();
+            }
+        });
+    };
+
+    const generatePcDashboardHtml = (data, state, stats, fieldsConfig) => {
+        const paginatedData = data.slice((state.currentPage - 1) * state.rowsPerPage, state.currentPage * state.rowsPerPage);
+        const totalPages = Math.ceil(data.length / state.rowsPerPage);
+        const osOrder = ['Windows 11 Pro', 'Windows 10 Pro', 'Windows 7 Pro', 'Windows Server 2012 R2', 'Windows XP'];
+        const merekOrder = ['ACER', 'AXIOO', 'HP', 'LENOVO'];
+        const colorMap = {
+            'Windows 11 Pro': 'text-blue-500',
+            'ACER': 'text-blue-600',
+            'Windows 10 Pro': 'text-emerald-500',
+            'AXIOO': 'text-emerald-500',
+            'Windows 7 Pro': 'text-orange-500',
+            'HP': 'text-orange-600',
+            'Windows Server 2012 R2': 'text-rose-500',
+            'LENOVO': 'text-indigo-600',
+            'Windows XP': 'text-indigo-400'
+        };
+
+        const allFloors = Object.keys(stats.countByFloor || {}).filter(f => f !== 'N/A').sort();
+
+        const createStatColumnContent = (statObject, floor, order, colorMap) => {
+            const floorStats = statObject ? statObject[floor] : {};
+            return order.map(item => {
+                const count = (floorStats && floorStats[item]) ? floorStats[item] : 0;
+                const colorClass = colorMap[item] || 'text-gray-800';
+                if (count > 0) return `<span class="block ${colorClass}">${item} : ${count}</span>`;
+                else return `<span class="block text-gray-400">${item} : <span class="inline-flex items-center justify-center w-4 h-4 text-xs font-bold text-red-500 border border-red-500 rounded-full">0</span></span>`;
+            }).join('');
+        };
+
+        const dynamicChartCards = allFloors.map(floor => `
+        <div class="bg-white dark:bg-gray-800 p-2.5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+            <div class="chart-container flex items-center min-h-[90px]">
+                <div class="relative w-[40%] flex justify-center">
+                    <div class="relative w-16 h-16">
+                        <canvas id="osChart${floor.replace(/\s+/g, '')}"></canvas>
+                        <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                            <span class="font-medium text-gray-400 dark:text-gray-500 text-[8px] leading-tight">${floor}</span>
+                            <span class="text-base font-bold text-gray-800 dark:text-white leading-none">${stats.countByFloor[floor] || 0}</span>
+                        </div>
+                    </div>
+                </div>
+                <div id="osChart${floor.replace(/\s+/g, '')}-legend" class="w-[60%] pl-3 flex flex-col justify-center space-y-0.5"></div>
+            </div>
+        </div>
+      `).join('');
+
+        const summaryCards = allFloors.map(floor => `
+        <div class="bg-white dark:bg-gray-800 overflow-hidden rounded-xl shadow-md border border-gray-100 dark:border-gray-700">
+            <div class="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-100 dark:border-gray-700 text-center">
+                <h4 class="font-bold text-sm text-gray-800 dark:text-white">${floor}</h4>
+            </div>
+            <div class="p-4 grid grid-cols-2 gap-4 text-[10px]">
+                <div class="space-y-2">
+                    <h5 class="font-bold text-gray-500 dark:text-gray-400 mb-1 border-b pb-1">OPERATING SYSTEM</h5>
+                    <div class="space-y-1">
+                        ${createStatColumnContent(stats.osByFloor, floor, osOrder, colorMap)}
+                    </div>
+                </div>
+                <div class="space-y-2">
+                    <h5 class="font-bold text-gray-500 dark:text-gray-400 mb-1 border-b pb-1">MEREK PC</h5>
+                    <div class="space-y-1">
+                        ${createStatColumnContent(stats.typeByFloor, floor, merekOrder, colorMap)}
+                    </div>
+                </div>
+            </div>
+        </div>
+      `).join('');
+
+        const hardcodedPcFields = ['ID', 'IP Address', 'Serial Number', 'RAM', 'Hostname', 'Type PC', 'Type Keyboard', 'Type Mouse', 'Serial Number Monitor', 'NIB Monitor', 'Nama', 'HQ', 'Extension', 'Layanan', 'Operating System', 'Lantai', 'Status', 'RowIndex', 'SheetName', 'Timestamp', 'Diubah Oleh', 'Aksi'];
+        const allPcKeys = (state.originalData && state.originalData.length > 0) ? Object.keys(state.originalData[0]) : (data.length > 0 ? Object.keys(data[0]) : []);
+        const dynamicPcFields = allPcKeys.filter(k => {
+            const config = fieldsConfig && fieldsConfig.find(f => f.name.trim().toLowerCase() === k.trim().toLowerCase());
+            if (config && config.hiddenInDashboard) return false;
+            if (config && config.groupName && config.groupName.trim() !== '') return true;
+            if (hardcodedPcFields.includes(k)) return false;
+            return true;
+        });
+        if (fieldsConfig) {
+            dynamicPcFields.sort((a, b) => {
+                const indexA = fieldsConfig.findIndex(f => f.name.trim().toLowerCase() === a.trim().toLowerCase());
+                const indexB = fieldsConfig.findIndex(f => f.name.trim().toLowerCase() === b.trim().toLowerCase());
+                if (indexA === -1 && indexB === -1) return 0;
+                if (indexA === -1) return 1;
+                if (indexB === -1) return -1;
+                return indexA - indexB;
+            });
+        }
+
+        let groupedDynamicPcFields = [];
+        let PcGroupMap = {};
+        if (fieldsConfig) {
+            fieldsConfig.forEach(f => {
+                if (f.groupName) {
+                    PcGroupMap[f.name] = f.groupName;
+                }
+            });
+        }
+        let processedPcGroups = new Set();
+        dynamicPcFields.forEach(h => {
+            let gName = PcGroupMap[h];
+            if (gName) {
+                if (!processedPcGroups.has(gName)) {
+                    let fieldsInGroup = dynamicPcFields.filter(rh => PcGroupMap[rh] === gName);
+                    groupedDynamicPcFields.push({ type: 'group', name: gName, fields: fieldsInGroup });
+                    processedPcGroups.add(gName);
+                }
+            } else {
+                groupedDynamicPcFields.push({ type: 'single', name: h });
+            }
+        });
+        
+
+        const isGrouped = (fieldName) => {
+            if (!fieldsConfig) return false;
+            const config = fieldsConfig.find(f => f.name.trim().toLowerCase() === fieldName.trim().toLowerCase());
+            return config && config.groupName && config.groupName.trim() !== '';
+        };
+
+        const isHidden = (fieldName) => {
+            if (!fieldsConfig) return false;
+            const config = fieldsConfig.find(f => f.name.trim().toLowerCase() === fieldName.trim().toLowerCase());
+            return (config && config.hiddenInDashboard) || isGrouped(fieldName);
+        };
+        const hasDetailPc = !isHidden('IP Address') || !isHidden('Serial Number') || !isHidden('RAM') || !isHidden('Hostname');
+        const hasPerangkat = !isHidden('Type PC') || !isHidden('Type Keyboard') || !isHidden('Type Mouse');
+        const hasDetailMonitor = !isHidden('Serial Number Monitor') || !isHidden('NIB Monitor');
+        const hasDetailPengguna = !isHidden('Nama') || !isHidden('HQ') || !isHidden('Extension') || !isHidden('Layanan');
+
+        const tableHeaders = `
+        <thead class="sticky top-0 z-20 text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 hidden md:table-header-group">
+          <tr>
+            
+            ${!isHidden('Operating System') ? `<th scope="col" class="px-6 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>OPERATING SYSTEM</div>
+                    <div class="relative w-full mt-2">
+                        <input type="text" class="form-input text-xs !py-1.5 !pl-1.5 !pr-7 w-full font-normal" data-col-filter="Operating System" placeholder="Cari..." value="${state.columnFilters?.['Operating System'] || ''}">
+                        ${state.columnFilters?.['Operating System'] ? `<i class="fas fa-times absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600" onclick="this.previousElementSibling.value=''; this.previousElementSibling.dispatchEvent(new Event('input', {bubbles:true}))"></i>` : ''}
+                    </div>
+        
+                </div>
+            ` : ''}
+            ${!isHidden('Lantai') ? `<th scope="col" class="px-6 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>LANTAI</div>
+                    <div class="relative w-full mt-2">
+                        <input type="text" class="form-input text-xs !py-1.5 !pl-1.5 !pr-7 w-full font-normal" data-col-filter="Lantai" placeholder="Cari..." value="${state.columnFilters?.['Lantai'] || ''}">
+                        ${state.columnFilters?.['Lantai'] ? `<i class="fas fa-times absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600" onclick="this.previousElementSibling.value=''; this.previousElementSibling.dispatchEvent(new Event('input', {bubbles:true}))"></i>` : ''}
+                    </div>
+        
+                </div>
+            ` : ''}
+            ${groupedDynamicPcFields.map(col => `
+            <th scope="col" class="px-6 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>${col.name.toUpperCase()}</div>
+                    <div class="relative w-full mt-2">
+                        <input type="text" class="form-input text-xs !py-1.5 !pl-1.5 !pr-7 w-full font-normal" data-col-filter="${col.name}" placeholder="Cari..." value="${state.columnFilters?.[col.name] || ''}">
+                        ${state.columnFilters?.[col.name] ? `<i class="fas fa-times absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600" onclick="this.previousElementSibling.value=''; this.previousElementSibling.dispatchEvent(new Event('input', {bubbles:true}))"></i>` : ''}
+                    </div>
+            
+                </div>
+            `).join('')}
+            ${!isHidden('Status') ? `<th scope="col" class="px-6 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>STATUS</div>
+                    <select class="form-select text-xs !p-1.5 mt-2 w-full font-normal" data-control="status-filter">
+                        ${typeof getStatusFilterOptionsHtml === 'function' ? getStatusFilterOptionsHtml('PC', state.statusFilter) : `
+                        <option value="all" ${state.statusFilter === 'all' ? 'selected' : ''}>SEMUA STATUS</option>
+                        <option value="DIPAKAI" ${state.statusFilter === 'DIPAKAI' ? 'selected' : ''}>DIPAKAI</option>
+                        <option value="TERSEDIA" ${state.statusFilter === 'TERSEDIA' ? 'selected' : ''}>TERSEDIA</option>
+                        <option value="RUSAK" ${state.statusFilter === 'RUSAK' ? 'selected' : ''}>RUSAK</option>
+                        `}
+                    </select>
+                </div>
+            </th>
+            </th>` : ''}
+            <th scope="col" class="px-6 py-3 text-center align-top"><div>AKSI</div></th>
+          </tr>
+        </thead>
+      `;
+
+        const tableBody = `
+        <tbody>${paginatedData.map(row => `
+          <tr class="block md:table-row mb-4 md:mb-0 border md:border-gray-200 dark:border-gray-700 md:border-b rounded-lg shadow-md md:shadow-none bg-white dark:bg-gray-800">
+            <td class="p-3 block md:table-cell md:px-6 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none">
+              <span class="md:hidden font-bold uppercase text-gray-500 dark:text-gray-400 mb-2 block">Detail PC</span>
+              <div><strong>IP ADDRESS:</strong> ${row['IP Address'] || ''}</div>
+              <div><strong>SN PC:</strong> ${row['Serial Number'] || ''}</div> 
+              <div><strong>RAM:</strong> ${row['RAM'] || ''}</div>
+              <div><strong>HOSTNAME:</strong> ${row['Hostname'] || ''}</div>
+            </td>
+            <td class="p-3 block md:table-cell md:px-6 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none">
+              <span class="md:hidden font-bold uppercase text-gray-500 dark:text-gray-400 mb-2 block">Perangkat</span>
+              <div><strong>TYPE PC:</strong> ${row['Type PC'] || ''}</div>
+              <div><strong>TYPE KEYBOARD:</strong> ${row['Type Keyboard'] || ''}</div>
+              <div><strong>TYPE MOUSE:</strong> ${row['Type Mouse'] || ''}</div>
+            </td>
+            <td class="p-3 block md:table-cell md:px-6 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none">
+              <span class="md:hidden font-bold uppercase text-gray-500 dark:text-gray-400 mb-2 block">Detail Monitor</span>
+              <div><strong>SN MONITOR:</strong> ${row['Serial Number Monitor'] || ''}</div>
+              <div><strong>NIB MONITOR:</strong> ${row['NIB Monitor'] || ''}</div>
+            </td>
+            <td class="p-3 block md:table-cell md:px-6 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none">
+              <span class="md:hidden font-bold uppercase text-gray-500 dark:text-gray-400 mb-2 block">Detail Pengguna</span>
+              <div><strong>NAMA:</strong> ${row['Nama'] || ''}</div>
+              <div><strong>HQ:</strong> ${row['HQ'] || ''}</div>
+              <div><strong>EXTENSION:</strong> ${row['Extension'] || ''}</div>
+              <div><strong>LAYANAN:</strong> ${row['Layanan'] || ''}</div>
+            </td>
+            <td class="p-3 block md:table-cell md:px-6 md:py-4 text-right md:text-left border-b border-gray-200 dark:border-gray-700 md:border-none">
+              <span class="md:hidden float-left font-bold uppercase text-gray-500 dark:text-gray-400">Operating System</span>
+              <span>${row['Operating System'] || ''}</span>
+            </td>
+            <td class="p-3 block md:table-cell md:px-6 md:py-4 text-right md:text-left border-b border-gray-200 dark:border-gray-700 md:border-none">
+              <span class="md:hidden float-left font-bold uppercase text-gray-500 dark:text-gray-400">Lantai</span>
+              <span>${row['Lantai'] || ''}</span>
+            </td>
+            ${groupedDynamicPcFields.map(col => `
+            <td class="p-3 block md:table-cell md:px-6 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none">
+              <span class="md:hidden font-bold uppercase text-gray-500 dark:text-gray-400 mb-2 block">${col.name}</span>
+              ${col.type === 'group' ? 
+                `<div class="flex flex-col gap-1 text-left">
+                    ${col.fields.map(f => `<div class="text-xs"><strong>${f}:</strong> ${row[f] || '-'}</div>`).join('')}
+                </div>` : 
+                `<div>${row[col.name] || ''}</div>`
+              }
+            </td>`).join('')}
+            <td class="p-3 block md:table-cell md:px-6 md:py-4 text-right md:text-left border-b border-gray-200 dark:border-gray-700 md:border-none">
+              <span class="md:hidden float-left font-bold uppercase text-gray-500 dark:text-gray-400">Status</span>
+              <span>${row['Status'] || ''}</span>
+            </td>
+            <td class="p-3 block md:table-cell md:px-6 md:py-4 text-right md:text-left">
+              <span class="md:hidden float-left font-bold uppercase text-gray-500 dark:text-gray-400">Aksi</span>
+              <div class="flex items-center justify-end md:justify-center space-x-2">
+                <button data-action="view" data-id="${row['ID']}" class="text-blue-500 hover:text-blue-700"><i class="fas fa-eye"></i></button>
+                <button data-action="edit" data-id="${row['ID']}" class="text-green-500 hover:text-green-700"><i class="fas fa-pencil-alt"></i></button>
+                <button data-action="delete" data-id="${row['ID']}" class="text-red-500 hover:text-red-700"><i class="fas fa-trash-alt"></i></button>
+              </div>
+            </td>
+          </tr>`).join('')}</tbody>
+      `;
+
+        return `
+          <div class="mb-2 flex items-center justify-between">
+            <h2 class="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                <i class="fas fa-desktop text-indigo-500"></i>
+                Dashboard PC
+            </h2>
+          </div>
+          
+          <div class="mb-3">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
+                <!-- Bagian Kiri: Total PC (Besar) -->
+                <div class="bg-white dark:bg-gray-800 p-3 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col justify-center">
+                    <div class="chart-container flex flex-col md:flex-row items-center md:items-center min-h-[140px] gap-4 md:gap-0">
+                        <div class="relative w-[140px] md:w-[35%] flex justify-center">
+                            <div class="relative w-32 h-32">
+                                <canvas id="totalPcChart"></canvas>
+                                <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                                    <span class="font-medium text-gray-400 dark:text-gray-500 text-[9px]">Total PC</span>
+                                    <span class="text-2xl font-black text-gray-800 dark:text-white leading-none">${stats.totalPC || 0}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="totalPcChart-legend" class="w-full md:w-[65%] pl-0 md:pl-6 flex flex-col justify-center">
+                            <!-- Legend diisi oleh JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bagian Kanan: Grid 2x2 untuk OS per Lantai -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    ${dynamicChartCards}
+                </div>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-center gap-4 mb-1">
+                <div class="h-[1px] bg-gray-200 dark:bg-gray-700 flex-grow"></div>
+                <h3 class="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Ringkasan per Lokasi</h3>
+                <div class="h-[1px] bg-gray-200 dark:bg-gray-700 flex-grow"></div>
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-1">
+            ${summaryCards}
+          </div>
+
+          <div class="bg-white dark:bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 mt-1">
+            <div class="flex flex-col lg:flex-row justify-between items-center mb-6 gap-6">
+                <div class="flex flex-wrap items-center w-full lg:w-auto gap-3">
+                <div class="relative flex-grow min-w-[200px]"><input type="text" placeholder="Cari di semua kolom..." class="form-input pl-10 w-full" value="${state.searchTerm}"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i></div>
+                <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                    <button id="scan-qr-button" class="btn btn-secondary flex-shrink-0 md:px-3.5"><i class="fas fa-qrcode"></i></button>
+                    <button data-action="import-excel" class="btn btn-secondary flex-1 md:flex-initial text-center justify-center text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300"><i class="fas fa-file-import mr-1.5"></i>Impor</button>
+                    <button data-action="export-excel" class="btn btn-secondary flex-1 md:flex-initial text-center justify-center text-xs bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-300"><i class="fas fa-file-excel mr-1.5"></i>Ekspor</button>
+                    <button data-action="export-log-aktivitas" class="btn btn-secondary flex-1 md:flex-initial text-center justify-center text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300"><i class="fas fa-download mr-1.5"></i>Log</button>
+                </div>
+                </div>
+                <div class="flex items-center gap-2 text-xs text-gray-500 whitespace-nowrap self-end md:self-center">
+<span>Tampilkan</span><select class="form-select !p-2 !w-auto" data-control="rows-per-page">${[5, 10, 25, 50, 100].map(n => `<option ${state.rowsPerPage == n ? 'selected' : ''}>${n}</option>`).join('')}</select><span>data</span></div>
+            </div>
+            <div class="overflow-x-auto overflow-y-auto max-h-[60vh] relative">
+                ${generateDynamicTableHtml(paginatedData, fieldsConfig, state)}
+                ${data.length === 0 ? '<p class="text-center text-gray-500 dark:text-gray-400 py-8">Tidak ada data yang cocok.</p>' : ''}
+            </div>
+            <div class="flex justify-between items-center mt-6">
+                <span class="text-sm text-gray-600 dark:text-gray-400">Menampilkan ${paginatedData.length > 0 ? (state.currentPage - 1) * state.rowsPerPage + 1 : 0} sampai ${Math.min(state.currentPage * state.rowsPerPage, data.length)} dari ${data.length} data</span>
+                <div class="inline-flex mt-2 xs:mt-0"><button class="btn btn-secondary rounded-r-none" data-control="prev" ${state.currentPage <= 1 ? 'disabled' : ''}>Prev</button><button class="btn btn-secondary rounded-l-none" data-control="next" ${state.currentPage >= totalPages ? 'disabled' : ''}>Next</button></div>
+            </div>
+          </div>
+        `;
+    };
+
+    // --- RAM ---
+    const renderRamCharts = (stats) => {
+        const doughnutOptions = getDoughnutOptions();
+        const chartColors = ['#93c5fd', '#34d399', '#c4b5fd', '#a78bfa', '#fca5a5', '#fb923c', '#f87171'];
+        const isDark = document.documentElement.classList.contains('dark');
+
+        const generateLegend = (chartId, chart) => {
+            const legendContainer = document.getElementById(chartId + '-legend');
+            if (!legendContainer) return;
+            const legendItems = chart.data.labels.map((label, index) => {
+                const color = chart.data.datasets[0].backgroundColor[index];
+                const value = chart.data.datasets[0].data[index];
+                if (value === 0) return '';
+                return `<div class="flex items-center"><span class="w-3 h-3 rounded-sm mr-2" style="background-color: ${color};"></span><span>${label}: <strong>${value}</strong></span></div>`;
+            }).join('');
+            legendContainer.innerHTML = legendItems;
+        };
+
+        // 1. Total RAM Chart
+        const totalRamCtx = document.getElementById('totalRamChart');
+        if (totalRamCtx) {
+            if (charts.totalRam) charts.totalRam.destroy();
+            charts.totalRam = new Chart(totalRamCtx, { type: 'doughnut', data: { labels: ['Total RAM'], datasets: [{ data: [stats.totalRAM], backgroundColor: ['#34d399'], borderColor: isDark ? '#1f2937' : '#fff' }] }, options: doughnutOptions });
+            generateLegend('totalRamChart', charts.totalRam);
+        }
+
+        // 2. RAM by Type Chart
+        const typeRamCtx = document.getElementById('typeRamChart');
+        if (typeRamCtx && stats.countByType) {
+            if (charts.typeRam) charts.typeRam.destroy();
+            const typeData = stats.countByType || {};
+            const sortedLabels = ['SODIMM', 'LONGDIMM', 'N/A'].filter(s => typeData[s]);
+            const sortedData = sortedLabels.map(label => typeData[label]);
+            charts.typeRam = new Chart(typeRamCtx, { type: 'doughnut', data: { labels: sortedLabels, datasets: [{ data: sortedData, backgroundColor: ['#60a5fa', '#fb923c', '#9ca3af'], borderColor: isDark ? '#1f2937' : '#fff' }] }, options: doughnutOptions });
+            generateLegend('typeRamChart', charts.typeRam);
+        }
+
+        // 3. RAM by Jenis Chart
+        const jenisRamCtx = document.getElementById('jenisRamChart');
+        if (jenisRamCtx && stats.countByJenis) {
+            if (charts.jenisRam) charts.jenisRam.destroy();
+            const jenisData = stats.countByJenis || {};
+            const sortedLabels = ['DDR1', 'DDR2', 'DDR3', 'DDR3L', 'DDR4', 'DDR5', 'N/A'].filter(s => jenisData[s]);
+            const sortedData = sortedLabels.map(label => jenisData[label]);
+            charts.jenisRam = new Chart(jenisRamCtx, { type: 'doughnut', data: { labels: sortedLabels, datasets: [{ data: sortedData, backgroundColor: chartColors, borderColor: isDark ? '#1f2937' : '#fff' }] }, options: doughnutOptions });
+            generateLegend('jenisRamChart', charts.jenisRam);
+        }
+
+        // 4. RAM by Size Chart
+        const sizeRamCtx = document.getElementById('sizeRamChart');
+        if (sizeRamCtx && stats.countBySize) {
+            if (charts.sizeRam) charts.sizeRam.destroy();
+            const sizeData = stats.countBySize || {};
+            const sortedLabels = ['2 GB', '4 GB', '8 GB', '16 GB', 'N/A'].filter(s => sizeData[s]);
+            const sortedData = sortedLabels.map(label => sizeData[label]);
+            charts.sizeRam = new Chart(sizeRamCtx, { type: 'doughnut', data: { labels: sortedLabels, datasets: [{ data: sortedData, backgroundColor: ['#34d399', '#c084fc', '#f87171', '#fbbf24', '#9ca3af'], borderColor: isDark ? '#1f2937' : '#fff' }] }, options: doughnutOptions });
+            generateLegend('sizeRamChart', charts.sizeRam);
+        }
+    };
+    const generateRamDashboardHtml = (data, state, stats, fieldsConfig) => {
+        const paginatedData = data.slice((state.currentPage - 1) * state.rowsPerPage, state.currentPage * state.rowsPerPage);
+        const totalPages = Math.ceil(data.length / state.rowsPerPage);
+
+        const isGrouped = (fieldName) => {
+            if (!fieldsConfig) return false;
+            const config = fieldsConfig.find(f => f.name.trim().toLowerCase() === fieldName.trim().toLowerCase());
+            return config && config.groupName && config.groupName.trim() !== '';
+        };
+
+        const isHidden = (fieldName) => {
+            if (!fieldsConfig) return false;
+            const config = fieldsConfig.find(f => f.name.trim().toLowerCase() === fieldName.trim().toLowerCase());
+            return (config && config.hiddenInDashboard) || isGrouped(fieldName);
+        };
+
+        const hardcodedRamFields = ['ID', 'Merk', 'SN', 'Type Ram', 'Jenis Ram', 'Size', 'Tgl Pengadaan', 'Layanan', 'Pengguna', 'SN PC', 'Ket.', 'Status', 'RowIndex', 'SheetName', 'Timestamp', 'Diubah Oleh', 'Aksi'];
+        const allRamKeys = (state.originalData && state.originalData.length > 0) ? Object.keys(state.originalData[0]) : (data.length > 0 ? Object.keys(data[0]) : []);
+        
+        const hasTypeJenisSize = !isHidden('Type Ram') || !isHidden('Jenis Ram') || !isHidden('Size');
+        const hasLayananPengguna = !isHidden('Layanan') || !isHidden('Pengguna');
+        const dynamicRamFields = allRamKeys.filter(k => {
+            const config = fieldsConfig && fieldsConfig.find(f => f.name.trim().toLowerCase() === k.trim().toLowerCase());
+            if (config && config.hiddenInDashboard) return false;
+            if (config && config.groupName && config.groupName.trim() !== '') return true;
+            if (hardcodedRamFields.includes(k)) return false;
+            return true;
+        });
+        if (fieldsConfig) {
+            dynamicRamFields.sort((a, b) => {
+                const indexA = fieldsConfig.findIndex(f => f.name.trim().toLowerCase() === a.trim().toLowerCase());
+                const indexB = fieldsConfig.findIndex(f => f.name.trim().toLowerCase() === b.trim().toLowerCase());
+                if (indexA === -1 && indexB === -1) return 0;
+                if (indexA === -1) return 1;
+                if (indexB === -1) return -1;
+                return indexA - indexB;
+            });
+        }
+
+        let groupedDynamicRamFields = [];
+        let RamGroupMap = {};
+        if (fieldsConfig) {
+            fieldsConfig.forEach(f => {
+                if (f.groupName) {
+                    RamGroupMap[f.name] = f.groupName;
+                }
+            });
+        }
+        let processedRamGroups = new Set();
+        dynamicRamFields.forEach(h => {
+            let gName = RamGroupMap[h];
+            if (gName) {
+                if (!processedRamGroups.has(gName)) {
+                    let fieldsInGroup = dynamicRamFields.filter(rh => RamGroupMap[rh] === gName);
+                    groupedDynamicRamFields.push({ type: 'group', name: gName, fields: fieldsInGroup });
+                    processedRamGroups.add(gName);
+                }
+            } else {
+                groupedDynamicRamFields.push({ type: 'single', name: h });
+            }
+        });
+        
+
+        const tableHeaders = `
+          <thead class="sticky top-0 z-20 text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 hidden md:table-header-group">
+          <tr>
+              ${!isHidden('ID') ? `<th scope="col" class="px-6 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>ID</div>
+                    <div class="relative w-full mt-2">
+                        <input type="text" class="form-input text-xs !py-1.5 !pl-1.5 !pr-7 w-full font-normal" data-col-filter="ID" placeholder="Cari..." value="${state.columnFilters?.['ID'] || ''}">
+                        ${state.columnFilters?.['ID'] ? `<i class="fas fa-times absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600" onclick="this.previousElementSibling.value=''; this.previousElementSibling.dispatchEvent(new Event('input', {bubbles:true}))"></i>` : ''}
+                    </div>
+        
+                </div>
+            ` : ''}
+              ${!isHidden('Merk') ? `<th scope="col" class="px-6 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>Merk</div>
+                    <div class="relative w-full mt-2">
+                        <input type="text" class="form-input text-xs !py-1.5 !pl-1.5 !pr-7 w-full font-normal" data-col-filter="Merk" placeholder="Cari..." value="${state.columnFilters?.['Merk'] || ''}">
+                        ${state.columnFilters?.['Merk'] ? `<i class="fas fa-times absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600" onclick="this.previousElementSibling.value=''; this.previousElementSibling.dispatchEvent(new Event('input', {bubbles:true}))"></i>` : ''}
+                    </div>
+        
+                </div>
+            ` : ''}
+              ${!isHidden('SN') ? `<th scope="col" class="px-6 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>SN</div>
+                    <div class="relative w-full mt-2">
+                        <input type="text" class="form-input text-xs !py-1.5 !pl-1.5 !pr-7 w-full font-normal" data-col-filter="SN" placeholder="Cari..." value="${state.columnFilters?.['SN'] || ''}">
+                        ${state.columnFilters?.['SN'] ? `<i class="fas fa-times absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600" onclick="this.previousElementSibling.value=''; this.previousElementSibling.dispatchEvent(new Event('input', {bubbles:true}))"></i>` : ''}
+                    </div>
+        
+                </div>
+            ` : ''}
+              ${hasTypeJenisSize ? `<th scope="col" class="px-6 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>Type / Jenis / Size</div>
+                    <div class="relative w-full mt-2">
+                        <input type="text" class="form-input text-xs !py-1.5 !pl-1.5 !pr-7 w-full font-normal" data-col-filter="Type / Jenis / Size" placeholder="Cari..." value="${state.columnFilters?.['Type / Jenis / Size'] || ''}">
+                        ${state.columnFilters?.['Type / Jenis / Size'] ? `<i class="fas fa-times absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600" onclick="this.previousElementSibling.value=''; this.previousElementSibling.dispatchEvent(new Event('input', {bubbles:true}))"></i>` : ''}
+                    </div>
+        
+                </div>
+            ` : ''}
+              ${!isHidden('Tgl Pengadaan') ? `<th scope="col" class="px-6 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>Tgl Pengadaan</div>
+                    <div class="relative w-full mt-2">
+                        <input type="text" class="form-input text-xs !py-1.5 !pl-1.5 !pr-7 w-full font-normal" data-col-filter="Tgl Pengadaan" placeholder="Cari..." value="${state.columnFilters?.['Tgl Pengadaan'] || ''}">
+                        ${state.columnFilters?.['Tgl Pengadaan'] ? `<i class="fas fa-times absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600" onclick="this.previousElementSibling.value=''; this.previousElementSibling.dispatchEvent(new Event('input', {bubbles:true}))"></i>` : ''}
+                    </div>
+        
+                </div>
+            ` : ''}
+              ${hasLayananPengguna ? `<th scope="col" class="px-6 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>Layanan / Pengguna</div>
+                    <div class="relative w-full mt-2">
+                        <input type="text" class="form-input text-xs !py-1.5 !pl-1.5 !pr-7 w-full font-normal" data-col-filter="Layanan / Pengguna" placeholder="Cari..." value="${state.columnFilters?.['Layanan / Pengguna'] || ''}">
+                        ${state.columnFilters?.['Layanan / Pengguna'] ? `<i class="fas fa-times absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600" onclick="this.previousElementSibling.value=''; this.previousElementSibling.dispatchEvent(new Event('input', {bubbles:true}))"></i>` : ''}
+                    </div>
+        
+                </div>
+            ` : ''}
+              ${!isHidden('SN PC') ? `<th scope="col" class="px-6 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>SN PC</div>
+                    <div class="relative w-full mt-2">
+                        <input type="text" class="form-input text-xs !py-1.5 !pl-1.5 !pr-7 w-full font-normal" data-col-filter="SN PC" placeholder="Cari..." value="${state.columnFilters?.['SN PC'] || ''}">
+                        ${state.columnFilters?.['SN PC'] ? `<i class="fas fa-times absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600" onclick="this.previousElementSibling.value=''; this.previousElementSibling.dispatchEvent(new Event('input', {bubbles:true}))"></i>` : ''}
+                    </div>
+        
+                </div>
+            ` : ''}
+              ${!isHidden('Ket.') ? `<th scope="col" class="px-6 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>Ket.</div>
+                    <div class="relative w-full mt-2">
+                        <input type="text" class="form-input text-xs !py-1.5 !pl-1.5 !pr-7 w-full font-normal" data-col-filter="Ket." placeholder="Cari..." value="${state.columnFilters?.['Ket.'] || ''}">
+                        ${state.columnFilters?.['Ket.'] ? `<i class="fas fa-times absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600" onclick="this.previousElementSibling.value=''; this.previousElementSibling.dispatchEvent(new Event('input', {bubbles:true}))"></i>` : ''}
+                    </div>
+        
+                </div>
+            ` : ''}
+              ${groupedDynamicRamFields.map(col => `
+              <th scope="col" class="px-6 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>${col.name.toUpperCase()}</div>
+                    <div class="relative w-full mt-2">
+                        <input type="text" class="form-input text-xs !py-1.5 !pl-1.5 !pr-7 w-full font-normal" data-col-filter="${col.name}" placeholder="Cari..." value="${state.columnFilters?.[col.name] || ''}">
+                        ${state.columnFilters?.[col.name] ? `<i class="fas fa-times absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600" onclick="this.previousElementSibling.value=''; this.previousElementSibling.dispatchEvent(new Event('input', {bubbles:true}))"></i>` : ''}
+                    </div>
+              
+                </div>
+            `).join('')}
+              ${!isHidden('Status') ? `<th scope="col" class="px-6 py-3 align-top h-full align-middle">
+                <div class="flex flex-col justify-between h-full min-h-[4rem]">
+                    <div>Status</div>
+                    <select class="form-select text-xs !p-1.5 mt-2 w-full font-normal" data-control="status-filter">
+                        ${typeof getStatusFilterOptionsHtml === 'function' ? getStatusFilterOptionsHtml('RAM', state.statusFilter) : `
+                        <option value="all" ${state.statusFilter === 'all' ? 'selected' : ''}>SEMUA STATUS</option>
+                        <option value="DIPAKAI" ${state.statusFilter === 'DIPAKAI' ? 'selected' : ''}>DIPAKAI</option>
+                        <option value="TERSEDIA" ${state.statusFilter === 'TERSEDIA' ? 'selected' : ''}>TERSEDIA</option>
+                        <option value="RUSAK" ${state.statusFilter === 'RUSAK' ? 'selected' : ''}>RUSAK</option>
+                        `}
+                    </select>
+                </div>
+            </th>
+            </th>` : ''}
+              <th scope="col" class="px-6 py-3 text-center align-top"><div>AKSI</div></th>
+          </tr>
+          </thead>
+      `;
+
+        const tableBody = `
+          <tbody>${paginatedData.map(row => `
+          <tr class="block md:table-row mb-4 md:mb-0 border md:border-gray-200 dark:border-gray-700 md:border-b rounded-lg shadow-md md:shadow-none bg-white dark:bg-gray-800">
+              ${!isHidden('ID') ? `<td class="p-3 block md:table-cell md:px-6 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none">
+                  <span class="md:hidden font-bold uppercase text-gray-500 dark:text-gray-400 mb-2 block">ID</span>
+                  <div>${row['ID'] || ''}</div>
+              </td>` : ''}
+              ${!isHidden('Merk') ? `<td class="p-3 block md:table-cell md:px-6 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none">
+                  <span class="md:hidden font-bold uppercase text-gray-500 dark:text-gray-400 mb-2 block">Merk</span>
+                  <div>${row['Merk'] || ''}</div>
+              </td>` : ''}
+              ${!isHidden('SN') ? `<td class="p-3 block md:table-cell md:px-6 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none">
+                  <span class="md:hidden font-bold uppercase text-gray-500 dark:text-gray-400 mb-2 block">SN</span>
+                  <div>${row['SN'] || ''}</div>
+              </td>` : ''}
+              ${hasTypeJenisSize ? `<td class="p-3 block md:table-cell md:px-6 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none">
+                  <span class="md:hidden font-bold uppercase text-gray-500 dark:text-gray-400 mb-2 block">Type / Jenis / Size</span>
+                  ${!isHidden('Type Ram') ? `<div><strong>Type:</strong> ${row['Type Ram'] || ''}</div>` : ''}
+                  ${!isHidden('Jenis Ram') ? `<div><strong>Jenis:</strong> ${row['Jenis Ram'] || ''}</div>` : ''}
+                  ${!isHidden('Size') ? `<div><strong>Size:</strong> ${row['Size'] ? row['Size'] + ' GB' : ''}</div>` : ''}
+              </td>` : ''}
+              ${!isHidden('Tgl Pengadaan') ? `<td class="p-3 block md:table-cell md:px-6 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none">
+                  <span class="md:hidden font-bold uppercase text-gray-500 dark:text-gray-400 mb-2 block">Tgl Pengadaan</span>
+                  <div>${row['Tgl Pengadaan'] || ''}</div>
+              </td>` : ''}
+              ${hasLayananPengguna ? `<td class="p-3 block md:table-cell md:px-6 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none">
+                  <span class="md:hidden font-bold uppercase text-gray-500 dark:text-gray-400 mb-2 block">Layanan / Pengguna</span>
+                  ${!isHidden('Layanan') ? `<div><strong>Layanan:</strong> ${row['Layanan'] || ''}</div>` : ''}
+                  ${!isHidden('Pengguna') ? `<div><strong>Pengguna:</strong> ${row['Pengguna'] || ''}</div>` : ''}
+              </td>` : ''}
+              ${!isHidden('SN PC') ? `<td class="p-3 block md:table-cell md:px-6 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none">
+                  <span class="md:hidden font-bold uppercase text-gray-500 dark:text-gray-400 mb-2 block">SN PC</span>
+                  <div>${row['SN PC'] || ''}</div>
+              </td>` : ''}
+              ${!isHidden('Ket.') ? `<td class="p-3 block md:table-cell md:px-6 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none">
+                  <span class="md:hidden font-bold uppercase text-gray-500 dark:text-gray-400 mb-2 block">Ket.</span>
+                  <div>${row['Ket.'] || ''}</div>
+              </td>` : ''}
+              ${groupedDynamicRamFields.map(col => `
+              <td class="p-3 block md:table-cell md:px-6 md:py-4 border-b border-gray-200 dark:border-gray-700 md:border-none">
+                <span class="md:hidden font-bold uppercase text-gray-500 dark:text-gray-400 mb-2 block">${col.name}</span>
+                ${col.type === 'group' ? 
+                  `<div class="flex flex-col gap-1 text-left">
+                      ${col.fields.map(f => `<div class="text-xs"><strong>${f}:</strong> ${row[f] || '-'}</div>`).join('')}
+                  </div>` : 
+                  `<div>${row[col.name] || ''}</div>`
+                }
+              </td>`).join('')}
+              ${!isHidden('Status') ? `<td class="p-3 block md:table-cell md:px-6 md:py-4 text-right md:text-left border-b border-gray-200 dark:border-gray-700 md:border-none">
+              <span class="md:hidden float-left font-bold uppercase text-gray-500 dark:text-gray-400">Status</span>
+              <span>${row['Status'] || ''}</span>
+            </td>` : ''}
+              <td class="p-3 block md:table-cell md:px-6 md:py-4 text-right md:text-left">
+              <span class="md:hidden float-left font-bold uppercase text-gray-500 dark:text-gray-400">Aksi</span>
+              <div class="flex items-center justify-end md:justify-center space-x-2">
+                  <button data-action="view" data-id="${row['ID']}" class="text-blue-500 hover:text-blue-700"><i class="fas fa-eye"></i></button>
+                  <button data-action="edit" data-id="${row['ID']}" class="text-green-500 hover:text-green-700"><i class="fas fa-pencil-alt"></i></button>
+                  <button data-action="delete" data-id="${row['ID']}" class="text-red-500 hover:text-red-700"><i class="fas fa-trash-alt"></i></button>
+              </div>
+              </td>
+          </tr>`).join('')}</tbody>
+      `;
+
+        return `
+          <div class="mb-2 flex items-center justify-between">
+            <h2 class="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                <i class="fas fa-memory text-indigo-500"></i>
+                Dashboard RAM
+            </h2>
+          </div>
+          <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+              
+              <!-- Total RAM Card -->
+              <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md flex items-center gap-4">
+                  <div class="doughnut-chart-container">
+                      <canvas id="totalRamChart"></canvas>
+                      <div class="chart-center-text"><span class="value">${stats.totalRAM || 0}</span><br><span class="label">Total</span></div>
+                  </div>
+                  <div class="flex-grow">
+                      <h4 class="font-semibold mb-2">Total RAM</h4>
+                      <div id="totalRamChart-legend" class="chart-legend text-xs"></div>
+                  </div>
+              </div>
+              
+              <!-- By Type Card -->
+              <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md flex items-center gap-4">
+                  <div class="doughnut-chart-container">
+                      <canvas id="typeRamChart"></canvas>
+                      <div class="chart-center-text"><span class="value">${Object.keys(stats.countByType).filter(k => k !== 'N/A').length}</span><br><span class="label">Type</span></div>
+                  </div>
+                  <div class="flex-grow">
+                      <h4 class="font-semibold mb-2">By Type</h4>
+                      <div id="typeRamChart-legend" class="chart-legend text-xs"></div>
+                  </div>
+              </div>
+              
+              <!-- By Jenis Card -->
+              <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md flex items-center gap-4">
+                  <div class="doughnut-chart-container">
+                      <canvas id="jenisRamChart"></canvas>
+                      <div class="chart-center-text"><span class="value">${Object.keys(stats.countByJenis).filter(k => k !== 'N/A').length}</span><br><span class="label">Jenis</span></div>
+                  </div>
+                  <div class="flex-grow">
+                      <h4 class="font-semibold mb-2">By Jenis</h4>
+                      <div id="jenisRamChart-legend" class="chart-legend text-xs"></div>
+                  </div>
+              </div>
+
+              <!-- By Size Card -->
+              <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md flex items-center gap-4">
+                  <div class="doughnut-chart-container">
+                      <canvas id="sizeRamChart"></canvas>
+                      <div class="chart-center-text"><span class="value">${Object.keys(stats.countBySize).filter(k => k !== 'N/A').length}</span><br><span class="label">Size</span></div>
+                  </div>
+                  <div class="flex-grow">
+                      <h4 class="font-semibold mb-2">By Size</h4>
+                      <div id="sizeRamChart-legend" class="chart-legend text-xs"></div>
+                  </div>
+              </div>
+
+          </div>
+          
+          <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
+              <div class="flex flex-wrap items-center w-full md:w-auto gap-2">
+              <div class="relative flex-grow w-full md:w-auto"><input type="text" placeholder="Cari di semua kolom..." class="form-input pl-10 w-full" value="${state.searchTerm}"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i></div>
+              <button id="scan-qr-button" class="btn btn-secondary flex-shrink-0 md:px-3.5"><i class="fas fa-qrcode"></i></button>
+                    <button data-action="import-excel" class="btn btn-secondary flex-1 md:flex-initial text-center justify-center text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300"><i class="fas fa-file-import mr-1.5"></i>Impor</button>
+                    <button data-action="export-excel" class="btn btn-secondary flex-1 md:flex-initial text-center justify-center text-xs bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-300"><i class="fas fa-file-excel mr-1.5"></i>Ekspor</button>
+                    <button data-action="export-log-aktivitas" class="btn btn-secondary flex-1 md:flex-initial text-center justify-center text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300"><i class="fas fa-download mr-1.5"></i>Log</button>
+              </div>
+              <div class="flex items-center gap-4">
+                  
+                  <div class="flex items-center gap-2">
+                      <span>Tampilkan</span>
+                      <select class="form-select !p-2 !w-auto" data-control="rows-per-page">${[5, 10, 25, 50, 100].map(n => `<option ${state.rowsPerPage == n ? 'selected' : ''}>${n}</option>`).join('')}</select>
+                      <span>data</span>
+                  </div>
+              </div>
+          </div>
+          <div class="overflow-x-auto overflow-y-auto max-h-[60vh] relative">
+                ${generateDynamicTableHtml(paginatedData, fieldsConfig, state)}
+                ${data.length === 0 ? '<p class="text-center text-gray-500 dark:text-gray-400 py-8">Tidak ada data yang cocok.</p>' : ''}
+            </div>
+          <div class="flex justify-between items-center mt-4">
+              <span class="text-sm text-gray-700 dark:text-gray-300">Menampilkan ${paginatedData.length > 0 ? (state.currentPage - 1) * state.rowsPerPage + 1 : 0} sampai ${Math.min(state.currentPage * state.rowsPerPage, data.length)} dari ${data.length} data</span>
+              <div class="inline-flex mt-2 xs:mt-0"><button class="btn btn-secondary rounded-r-none" data-control="prev" ${state.currentPage <= 1 ? 'disabled' : ''}>Prev</button><button class="btn btn-secondary rounded-l-none" data-control="next" ${state.currentPage >= totalPages ? 'disabled' : ''}>Next</button></div>
+          </div>
+          </div>`;
+    };
+
+    // --- LAPTOP ---
+    const renderLaptopCharts = (stats) => {
+        const doughnutOptions = getDoughnutOptions();
+        const isDark = document.documentElement.classList.contains('dark');
+        const colors = {
+            status: ['#facc15', '#4ade80', '#f87171'],
+            brand: ['#60a5fa', '#fb923c', '#a78bfa', '#f87171'],
+            latest: ['#60a5fa', '#fb923c', '#a78bfa', '#f87171', '#34d399']
+        };
+
+        // Chart 1: Status
+        const statusCtx = document.getElementById(`laptop-status-chart`);
+        if (statusCtx) {
+            if (charts.laptopStatus) charts.laptopStatus.destroy();
+            charts.laptopStatus = new Chart(statusCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Dipakai', 'Tersedia', 'Rusak'],
+                    datasets: [{ data: [stats.dipakai, stats.tersedia, stats.rusak || 0], backgroundColor: colors.status, borderColor: isDark ? '#1f2937' : '#fff', borderWidth: 2 }]
+                },
+                options: doughnutOptions
+            });
+        }
+
+        // Chart 2: Merek
+        const brandCtx = document.getElementById(`laptop-brand-chart`);
+        if (brandCtx) {
+            if (charts.laptopBrand) charts.laptopBrand.destroy();
+            const brandLabels = Object.keys(stats.byBrand);
+            const brandData = brandLabels.map(label => stats.byBrand[label]);
+            charts.laptopBrand = new Chart(brandCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: brandLabels,
+                    datasets: [{ data: brandData, backgroundColor: colors.brand, borderColor: isDark ? '#1f2937' : '#fff', borderWidth: 2 }]
+                },
+                options: doughnutOptions
+            });
+        }
+
+        // Card 3: 5 Laptop Terbaru (Bukan chart, tapi list)
+        const latestListEl = document.getElementById('laptop-latest-list');
+        if (latestListEl) {
+            if (stats.latest5.length > 0) {
+                latestListEl.innerHTML = stats.latest5.map((item, index) => `
+                  <div class="legend-item text-xs">
+                      <div class="legend-color-box" style="background-color: ${colors.latest[index]};"></div>
+                      <span>${item.name} | (${item.status}) | ${item.duration}</span>
+                  </div>
+              `).join('');
+            } else {
+                latestListEl.innerHTML = '<p class="text-xs text-center text-gray-500">Belum ada data peminjaman.</p>';
+            }
+        }
+    };
+
+    const generateLaptopDashboardHtml = (data, state, stats, fieldsConfig) => {
+        const paginatedData = data.slice((state.currentPage - 1) * state.rowsPerPage, state.rowsPerPage * state.rowsPerPage);
+        const totalPages = Math.ceil(data.length / state.rowsPerPage);
+                const hardcodedLaptopFields = ['ID', 'Petugas', 'Status', 'Tgl Peminjaman', 'Tgl Pengembalian', 'Aksi', 'RowIndex', 'SheetName', 'Timestamp', 'Diubah Oleh'];
+        const allLaptopKeys = (state.originalData && state.originalData.length > 0) ? Object.keys(state.originalData[0]) : (data.length > 0 ? Object.keys(data[0]) : []);
+        const dynamicLaptopFields = allLaptopKeys.filter(k => {
+            const config = fieldsConfig && fieldsConfig.find(f => f.name.trim().toLowerCase() === k.trim().toLowerCase());
+            if (config && config.hiddenInDashboard) return false;
+            if (config && config.groupName && config.groupName.trim() !== '') return true;
+            if (hardcodedLaptopFields.includes(k)) return false;
+            return true;
+        });
+        if (fieldsConfig) {
+            dynamicLaptopFields.sort((a, b) => {
+                const indexA = fieldsConfig.findIndex(f => f.name.trim().toLowerCase() === a.trim().toLowerCase());
+                const indexB = fieldsConfig.findIndex(f => f.name.trim().toLowerCase() === b.trim().toLowerCase());
+                if (indexA === -1 && indexB === -1) return 0;
+                if (indexA === -1) return 1;
+                if (indexB === -1) return -1;
+                return indexA - indexB;
+            });
+        }
+
+        let groupedDynamicLaptopFields = [];
+        let LaptopGroupMap = {};
+        if (fieldsConfig) {
+            fieldsConfig.forEach(f => {
+                if (f.groupName && f.groupName.trim() !== '') {
+                    LaptopGroupMap[f.name] = f.groupName;
+                }
+            });
+        }
+        let processedLaptopGroups = new Set();
+        dynamicLaptopFields.forEach(h => {
+            let gName = LaptopGroupMap[h];
+            if (gName && gName.trim() !== '') {
+                if (!processedLaptopGroups.has(gName)) {
+                    let fieldsInGroup = dynamicLaptopFields.filter(rh => LaptopGroupMap[rh] === gName);
+                    groupedDynamicLaptopFields.push({ type: 'group', name: gName, fields: fieldsInGroup });
+                    processedLaptopGroups.add(gName);
+                }
+            } else {
+                groupedDynamicLaptopFields.push({ type: 'single', name: h });
+            }
+        });
+        
+        
+                const isGrouped = (fieldName) => {
+            if (!fieldsConfig) return false;
+            const config = fieldsConfig.find(f => f.name.trim().toLowerCase() === fieldName.trim().toLowerCase());
+            return config && config.groupName && config.groupName.trim() !== '';
+        };
+
+        const isHidden = (fieldName) => {
+            if (!fieldsConfig) return false;
+            const config = fieldsConfig.find(f => f.name.trim().toLowerCase() === fieldName.trim().toLowerCase());
+            return (config && config.hiddenInDashboard) || isGrouped(fieldName);
+        };
+        const headers = [];
+        if (!isHidden('Petugas')) headers.push('Petugas');
+        headers.push(...groupedDynamicLaptopFields);
+        if (!isHidden('Status')) headers.push('Status');
+        if (!isHidden('Tgl Peminjaman')) headers.push('Tgl Peminjaman');
+        if (!isHidden('Tgl Pengembalian')) headers.push('Tgl Pengembalian');
+        headers.push('Aksi');
+
+        const createLegendHtml = (data, colors) => {
+            let itemsHtml = Object.entries(data).slice(0, 4).map(([label, value], index) => `
+              <div class="legend-item">
+                  <div class="legend-color-box" style="background-color: ${colors[index % colors.length]};"></div>
+                  <span>${label}: <strong>${value}</strong></span>
+              </div>`).join('');
+            if (Object.keys(data).length > 4) {
+                itemsHtml += `<div class="mt-1 text-xs text-gray-400 dark:text-gray-500">+${Object.keys(data).length - 4} lainnya</div>`;
+            }
+            return `<div class="chart-legend">${itemsHtml}</div>`;
+        };
+
+        return `
+          <div class="mb-2 flex items-center justify-between">
+            <h2 class="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                <i class="fas fa-laptop text-indigo-500"></i>
+                Dashboard Laptop
+            </h2>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+              <!-- Status Card -->
+              <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md flex items-center gap-4">
+                  <div class="doughnut-chart-container">
+                      <canvas id="laptop-status-chart"></canvas>
+                      <div class="chart-center-text"><span class="value">${stats.total}</span><br><span class="label">Total</span></div>
+                  </div>
+                  <div class="flex-grow">
+                      <h4 class="font-semibold mb-2">Status Laptop</h4>
+                      <div class="chart-legend text-sm">
+                          <p>Laptop Dipakai: <strong>${stats.dipakai}</strong></p>
+                          <p>Laptop Tersedia: <strong>${stats.tersedia}</strong></p>
+                          <p>Laptop Rusak: <strong>${stats.rusak || 0}</strong></p>
+                      </div>
+                  </div>
+              </div>
+              <!-- Merek Card -->
+              <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md flex items-center gap-4">
+                  <div class="doughnut-chart-container">
+                       <canvas id="laptop-brand-chart"></canvas>
+                       <div class="chart-center-text"><span class="value">${Object.keys(stats.byBrand).length}</span><br><span class="label">Merek</span></div>
+                  </div>
+                  <div class="flex-grow">
+                      <h4 class="font-semibold mb-2">Merek</h4>
+                      ${createLegendHtml(stats.byBrand, ['#60a5fa', '#fb923c', '#a78bfa', '#f87171'])}
+                  </div>
+              </div>
+              <!-- 5 Laptop Terbaru -->
+              <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md flex items-center gap-4">
+                  <div class="doughnut-chart-container">
+                       <div class="w-full h-full rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center">
+                           <i class="fas fa-history text-3xl text-indigo-500"></i>
+                       </div>
+                       <div class="chart-center-text"><span class="value">5</span><br><span class="label">Terbaru</span></div>
+                  </div>
+                  <div class="flex-grow">
+                      <h4 class="font-semibold mb-2">5 Laptop Terbaru</h4>
+                      <div id="laptop-latest-list" class="chart-legend space-y-1">
+                          <!-- Legend will be populated by JS -->
+                      </div>
+                  </div>
+              </div>
+          </div>
+
+          <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+            <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
+                <div class="flex flex-wrap items-center w-full md:w-auto gap-2">
+                    <div class="relative flex-grow w-full md:w-auto">
+                        <input type="text" placeholder="Cari..." class="form-input pl-10 pr-10 w-full" value="${state.searchTerm}">
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                        ${state.searchTerm ? `<button type="button" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none" onclick="const i=this.parentElement.querySelector('input'); i.value=''; i.dispatchEvent(new Event('input', {bubbles:true}))"><i class="fas fa-times"></i></button>` : ''}
+                    </div>
+                    <button id="scan-qr-button" class="btn btn-secondary flex-shrink-0 md:px-3.5"><i class="fas fa-qrcode"></i></button>
+                    <button data-action="import-excel" class="btn btn-secondary flex-1 md:flex-initial text-center justify-center text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300"><i class="fas fa-file-import mr-1.5"></i>Impor</button>
+                    <button data-action="export-excel" class="btn btn-secondary flex-1 md:flex-initial text-center justify-center text-xs bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-300"><i class="fas fa-file-excel mr-1.5"></i>Ekspor</button>
+                    <button data-action="export-log-aktivitas" class="btn btn-secondary flex-1 md:flex-initial text-center justify-center text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300"><i class="fas fa-download mr-1.5"></i>Log</button>
+                </div>
+                <div class="flex items-center gap-4">
+                    
+                    <div class="flex items-center gap-2">
+                        <span>Tampilkan</span>
+                        <select class="form-select !p-2 !w-auto" data-control="rows-per-page">${[5, 10, 25, 50, 100].map(n => `<option ${state.rowsPerPage == n ? 'selected' : ''}>${n}</option>`).join('')}</select>
+                        <span>data</span>
+                    </div>
+                </div>
+            </div>
+            <div class="overflow-x-auto overflow-y-auto max-h-[60vh] relative">
+                ${generateDynamicTableHtml(paginatedData, fieldsConfig, state)}
+                ${data.length === 0 ? '<p class="text-center text-gray-500 dark:text-gray-400 py-8">Tidak ada data yang cocok.</p>' : ''}
+            </div>
+            <div class="flex justify-between items-center mt-4">
+                <span class="text-sm text-gray-700 dark:text-gray-300">Menampilkan ${paginatedData.length > 0 ? (state.currentPage - 1) * state.rowsPerPage + 1 : 0} sampai ${Math.min(state.currentPage * state.rowsPerPage, data.length)} dari ${data.length} data</span>
+                <div class="inline-flex mt-2 xs:mt-0">
+                    <button class="btn btn-secondary rounded-r-none" data-control="prev" ${state.currentPage <= 1 ? 'disabled' : ''}>Prev</button>
+                    <button class="btn btn-secondary rounded-l-none" data-control="next" ${state.currentPage >= totalPages ? 'disabled' : ''}>Next</button>
+                </div>
+            </div>
+          </div>`;
+    };
+</script>
+
+
+
+
+
+
+

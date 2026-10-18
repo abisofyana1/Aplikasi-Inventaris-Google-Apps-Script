@@ -1,0 +1,366 @@
+<script>
+    // --- APP INITIALIZATION ---
+    const loginSection = document.getElementById('login-section');
+    const appContainer = document.getElementById('app-container');
+    const loginForm = document.getElementById('login-form');
+    const loginError = document.getElementById('login-error');
+    const loader = document.getElementById('loader');
+
+    function setupApp(user) {
+        currentUser = user;
+        appContainer.classList.remove('hidden');
+        appContainer.classList.add('flex');
+        loginSection.classList.remove('flex');
+        loginSection.classList.add('hidden');
+
+        const userProfileSection = document.getElementById('user-profile-section');
+        const userName = document.getElementById('user-name');
+        const userProfileTrigger = document.getElementById('user-profile-trigger');
+        const userProfileMenu = document.getElementById('user-profile-menu');
+
+        userName.textContent = user.name;
+        userProfileSection.classList.remove('hidden');
+
+        // Initialize Admin scripts if present
+        if (typeof initAdminScripts === 'function') {
+            initAdminScripts();
+        }
+
+        // Admin Menu Visibility
+        const manageParent = document.getElementById('nav-manage-parent');
+        const mobileManageParent = document.getElementById('mobile-nav-manage-parent');
+
+        if (user.role && user.role.toLowerCase() === 'admin') {
+            if (manageParent) manageParent.classList.remove('hidden');
+            if (mobileManageParent) mobileManageParent.classList.remove('hidden');
+        } else {
+            if (manageParent) manageParent.classList.add('hidden');
+            if (mobileManageParent) mobileManageParent.classList.add('hidden');
+        }
+
+        // User Profile Menu Toggle
+        // Make sure we don't attach multiple listeners if setupApp called multiple times (though unlikely)
+        const newTrigger = userProfileTrigger.cloneNode(true);
+        userProfileTrigger.parentNode.replaceChild(newTrigger, userProfileTrigger);
+        newTrigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            userProfileMenu.classList.toggle('hidden');
+        });
+
+        document.getElementById('logout-button').addEventListener('click', () => {
+            const username = localStorage.getItem('username');
+
+            // 1. Clear Local Data IMMEDIATELY
+            localStorage.removeItem('username');
+            localStorage.removeItem('sessionToken');
+            localStorage.removeItem('LAST_VIEW_HASH');
+            // localStorage.removeItem('color-theme'); // Opsional: biasanya user suka tema tetap tersimpan
+
+            // 2. Clear Application State
+            allData = {};
+            currentUser = null;
+
+            // 3. Switch UI to Login Screen IMMEDIATELY (SPA Style)
+            // Sembunyikan App Container
+            const appContainer = document.getElementById('app-container');
+            const loginSection = document.getElementById('login-section');
+            const userProfileMenu = document.getElementById('user-profile-menu');
+
+            if (appContainer) {
+                appContainer.classList.add('hidden');
+                appContainer.classList.remove('flex');
+            }
+            if (loginSection) {
+                loginSection.classList.remove('hidden');
+                loginSection.classList.add('flex');
+            }
+            if (userProfileMenu) {
+                userProfileMenu.classList.add('hidden');
+            }
+
+            // Reset Login Form
+            if (loginForm) {
+                loginForm.reset();
+                const submitButton = loginForm.querySelector('button[type="submit"]');
+                if (submitButton) {
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'LOGIN';
+                }
+            }
+
+            // 4. Call Server Logout in Background (Fire and Forget)
+            // Tidak perlu reload halaman, karena state sudah bersih.
+            if (username) {
+                window.google.script.run.logout(username);
+            }
+        });
+
+        document.getElementById('user-details-button').addEventListener('click', () => {
+            modalTitle.textContent = 'Detail Pengguna';
+            modalBody.innerHTML = `<p><strong>Nama:</strong> ${currentUser.name}</p><p><strong>Username:</strong> ${currentUser.username}</p>`;
+            modalFooter.innerHTML = `<button class="btn btn-secondary" onclick="hideActionModal()">Tutup</button>`;
+            showActionModal();
+        });
+
+        window.addEventListener('click', () => {
+            if (userProfileMenu && !userProfileMenu.classList.contains('hidden')) {
+                userProfileMenu.classList.add('hidden');
+            }
+        });
+
+        const navigateTo = setupNavigation(webAppUrl);
+        setupForms(navigateTo);
+        setupDashboardInteractions();
+    }
+
+    // Handle Login
+    if (loginForm) {
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            loginError.textContent = '';
+            const submitButton = e.target.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            submitButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+
+            // Gather Client Info for Session Tracking
+            let ipAddress = "IP Tidak Terdeteksi";
+            try {
+                // Fetch Public IP
+                const res = await fetch('https://api.ipify.org?format=json');
+                const data = await res.json();
+                ipAddress = data.ip;
+            } catch (err) {
+                console.log("Gagal ambil IP:", err);
+            }
+
+            const clientInfo = {
+                ip: ipAddress,
+                userAgent: navigator.userAgent,
+                platform: navigator.platform
+            };
+
+            const credentials = {
+                username: loginForm.username.value,
+                password: loginForm.password.value,
+            };
+
+            window.google.script.run
+                .withSuccessHandler(result => {
+                    if (result.success) {
+                        localStorage.setItem('username', credentials.username);
+                        localStorage.setItem('sessionToken', result.token);
+
+                        // Jika allData sudah dibundle dalam response login, pakai langsung (CEPAT)
+                        if (result.allData && !result.allData.error) {
+                            const newDataStr = JSON.stringify(result.allData);
+                            localStorage.setItem('ALL_DATA_CACHE', newDataStr);
+                            allData = unzipData(result.allData);
+                            if (typeof applyMenuConfigToAllData === "function") applyMenuConfigToAllData();
+                        }
+
+                        // INSTANT MENU: Simpan data menu dari hasil login
+                        if (result.menuData) {
+                            localStorage.setItem('ASSET_MENU_CACHE', JSON.stringify(result.menuData));
+                            updateDynamicMenus();
+                        }
+
+                        setupApp(result.user);
+
+                        // Render dashboard segera kalau sudah ada data
+                        if (allData && Object.keys(allData).length > 0) {
+                            if (window.location.hash === '#main-dashboard' || window.location.hash === '') {
+                                if (window.loadMainDashboard) window.loadMainDashboard();
+                            } else {
+                                window.dispatchEvent(new Event('hashchange'));
+                            }
+                        }
+                    } else {
+                        loginError.textContent = result.message;
+                        submitButton.disabled = false;
+                        submitButton.textContent = 'LOGIN';
+                    }
+                })
+                .withFailureHandler(err => {
+                    loginError.textContent = 'Terjadi error: ' + err.message;
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'LOGIN';
+                })
+                .login(credentials, clientInfo);
+        });
+    }
+
+    function unzipData(packedData) {
+        if (!packedData) return {};
+        const unpackedData = {};
+
+        for (const sheetName in packedData) {
+            if (packedData.hasOwnProperty(sheetName)) {
+                const sheetContent = packedData[sheetName];
+
+                if (sheetContent && sheetContent.headers && Array.isArray(sheetContent.rows)) {
+                    const headers = sheetContent.headers;
+                    const rows = sheetContent.rows;
+
+                    const dataArray = rows.map(row => {
+                        const obj = {};
+                        headers.forEach((header, index) => {
+                            obj[header] = row[index];
+                        });
+                        return obj;
+                    });
+
+                    dataArray.headers = headers;
+                    dataArray.config = sheetContent.config || [];
+                    dataArray.dashboardDesign = sheetContent.dashboardDesign || 'standard';
+                    dataArray.columnWidths = sheetContent.columnWidths || {};
+
+                    unpackedData[sheetName] = dataArray;
+                }
+                else if (Array.isArray(sheetContent)) {
+                    unpackedData[sheetName] = sheetContent;
+                }
+                else {
+                    unpackedData[sheetName] = [];
+                }
+            }
+        }
+        return unpackedData;
+    }
+
+    function updateDynamicMenus() {
+        if (!allData) return;
+        const types = Object.keys(allData).sort();
+
+        const desktopMenu = document.getElementById('dashboard-dropdown-menu');
+        const mobileMenu = document.getElementById('mobile-dashboard-dropdown');
+        const inputSelect = document.getElementById('assetType');
+
+        if (desktopMenu) {
+            let html = '<div class="py-1">';
+            types.forEach(t => {
+                html += `<a href="#dashboard-${t}" class="nav-link text-gray-700 dark:text-gray-200 block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600 dashboard-menu-item">Dashboard ${t}</a>`;
+            });
+            html += '</div>';
+            desktopMenu.innerHTML = html;
+            if(window.updateNavActiveState) window.updateNavActiveState();
+        }
+
+        if (mobileMenu) {
+            let html = '';
+            types.forEach(t => {
+                html += `<a href="#dashboard-${t.toLowerCase()}" class="nav-link block pl-8 pr-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-700 dashboard-menu-item">Dashboard ${t}</a>`;
+            });
+            mobileMenu.innerHTML = html;
+            if(window.updateNavActiveState) window.updateNavActiveState();
+        }
+
+        if (inputSelect) {
+            const currentVal = inputSelect.value;
+            let html = '<option value="">Pilih Jenis Aset...</option>';
+            types.forEach(t => {
+                const selected = (t === currentVal) ? 'selected' : '';
+                html += `<option value="${t}" ${selected}>${t}</option>`;
+            });
+            inputSelect.innerHTML = html;
+        }
+    }
+
+    function initializeApp() {
+        // 1. Cek Local Storage agar load instant (Stale-while-revalidate)
+        // LOAD DATA BERAT (ROWS)
+        const cachedDataStr = localStorage.getItem('ALL_DATA_CACHE');
+        if (cachedDataStr) {
+            try {
+                const parsedCache = JSON.parse(cachedDataStr);
+                allData = unzipData(parsedCache);
+                if (typeof applyMenuConfigToAllData === "function") applyMenuConfigToAllData();
+                console.log("Data Cache loaded.");
+            } catch (e) {
+                localStorage.removeItem('ALL_DATA_CACHE');
+            }
+        }
+
+        // LOAD MENU INSTANT (0-SECOND)
+        const cachedMenuStr = localStorage.getItem('ASSET_MENU_CACHE');
+        if (cachedMenuStr) {
+            try {
+                const menuData = JSON.parse(cachedMenuStr);
+                for (let type in menuData) {
+                    if (!allData[type]) allData[type] = [];
+                    allData[type].dashboardDesign = menuData[type].dashboardDesign;
+                    allData[type].fieldsConfig = menuData[type].fields;
+                }
+                updateDynamicMenus();
+                console.log("Menu Cache loaded (Instant).");
+            } catch (e) {
+                localStorage.removeItem('ASSET_MENU_CACHE');
+            }
+        }
+
+        if (window.google && window.google.script && window.google.script.run) {
+            window.google.script.run.withSuccessHandler(url => {
+                webAppUrl = url;
+                const username = localStorage.getItem('username');
+                const token = localStorage.getItem('sessionToken');
+
+                if (username && token) {
+                    window.google.script.run.withSuccessHandler(authResult => {
+                        loader.classList.add('hidden');
+                        if (authResult.loggedIn) {
+
+                            // 2. Setup App (tampilkan UI)
+                            setupApp(authResult.user);
+
+                            // 2a. Jika allData sudah dibundle dalam checkAuth (PALING CEPAT)
+                            if (authResult.allData && !authResult.allData.error) {
+                                const newDataStr = JSON.stringify(authResult.allData);
+                                localStorage.setItem('ALL_DATA_CACHE', newDataStr);
+                                allData = unzipData(authResult.allData);
+                                if (typeof applyMenuConfigToAllData === "function") applyMenuConfigToAllData();
+                            }
+
+                            // 2b. Gunakan Menu Data yang dibundel saat Auth
+                            if (authResult.menuData) {
+                                localStorage.setItem('ASSET_MENU_CACHE', JSON.stringify(authResult.menuData));
+                                updateDynamicMenus();
+                            }
+
+                            // 3. Render dashboard SEKARANG karena data sudah ada
+                            if (allData && Object.keys(allData).length > 0) {
+                                if (window.location.hash === '#main-dashboard' || window.location.hash === '') {
+                                    if (window.loadMainDashboard) window.loadMainDashboard();
+                                } else {
+                                    window.dispatchEvent(new Event('hashchange'));
+                                }
+                            }
+
+                            // 4. Tidak perlu background fetch terpisah — data sudah fresh dari bundel checkAuth
+                            // (Background fetch dihapus karena data sudah up-to-date)
+
+                        } else {
+                            localStorage.removeItem('username');
+                            localStorage.removeItem('sessionToken');
+                            loginSection.classList.remove('hidden');
+                            loginSection.classList.add('flex');
+                        }
+                    }).checkAuth(username, token);
+                } else {
+                    loader.classList.add('hidden');
+                    loginSection.classList.remove('hidden');
+                    loginSection.classList.add('flex');
+                }
+            }).getWebAppUrl();
+        } else {
+            setTimeout(initializeApp, 100);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        // Capture original dashboard HTML for resetting
+        const md = document.getElementById('main-dashboard');
+        if (md) originalMainDashboardHtml = md.innerHTML;
+
+        initTheme();
+        initializeApp();
+    });
+</script>

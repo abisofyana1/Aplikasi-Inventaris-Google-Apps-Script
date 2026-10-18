@@ -1,0 +1,212 @@
+<script>
+    // --- FORM TEMPLATES ---
+    const formTemplates = {
+        Laptop: `
+      <div class="form-grid">
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Nama Pengguna</label><input type="text" name="nama" class="form-input mt-1" required></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Merek</label><select name="merek" class="form-select mt-1" required><option value="">Pilih Merek...</option><option>ACER</option><option>HP</option><option>LENOVO</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Serial Number (SN)</label><input type="text" name="serialNumber" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Hostname</label><input type="text" name="hostname" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating System (OS)</label>
+            <select name="os" class="form-select mt-1">
+                <option value="">Pilih OS...</option>
+                <option>Windows 10 Pro</option>
+                <option>Windows 11 Pro</option>
+                <option>Lainnya</option>
+            </select>
+        </div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Nomor Induk Barang (NIB)</label><input type="text" name="nib" class="form-input mt-1"></div>
+        <div class="col-span-full"><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Keperluan</label><select name="keperluan" class="form-select mt-1"><option value="">Pilih Keperluan...</option><option>ICCA</option><option>Meeting</option><option>Training</option><option>Lain-Lain</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Petugas</label><input type="text" name="petugas" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">QTY</label><input type="number" name="qty" class="form-input mt-1" value="1" required></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
+            <select name="status" class="form-select mt-1">
+                <option value="DIPAKAI" selected>DIPAKAI</option>
+                <option value="TERSEDIA">TERSEDIA</option>
+                <option value="RUSAK">RUSAK</option>
+            </select>
+        </div>
+        <div class="col-span-full"><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Keterangan</label><textarea name="keterangan" class="form-input mt-1"></textarea></div>
+      </div>
+    `,
+        Tablet: `
+      <div class="form-grid">
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Nama</label><input type="text" name="nama" class="form-input mt-1" required></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Merek</label><select name="merek" class="form-select mt-1" required><option value="">Pilih Merek...</option><option>SAMSUNG</option><option>HUAWEI</option><option>LENOVO</option><option>XIAOMI</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Versi</label><input type="text" name="versi" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Model</label><input type="text" name="model" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Serial Number</label><input type="text" name="sn" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">RAM</label><input type="text" name="ram" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Memory</label><input type="text" name="memory" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">IMEI 1</label><input type="text" name="imei1" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">IMEI 2</label><input type="text" name="imei2" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Tahun Rilis</label><input type="month" name="thnRilis" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Tgl Pembelian</label><input type="date" name="tglPembelian" class="form-input mt-1"></div>
+        <div class="col-span-full"><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Keperluan</label><input type="text" name="keperluan" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Petugas</label><input type="text" name="petugas" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">QTY</label><input type="number" name="qty" class="form-input mt-1" value="1" required></div>
+        <div class="col-span-full"><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Layanan</label>
+          <select name="layanan" class="form-select mt-1">
+            <option value="">Pilih Layanan...</option>
+            <option>CCR - RETAIL BANKING</option>
+            <option>CCR - CREDIT CARD</option>
+            <option>CCR - EMERALD & BRANCH</option>
+            <option>CCR - MERCHANT</option>
+            <option>CCR - SAT</option>
+            <option>CCR - T&R</option>
+            <option>CCM - RETAIL BANKING</option>
+            <option>CCM - CREDIT CARD</option>
+            <option>CCM - EMERALD & BRANCH</option>
+            <option>CX DIGITAL</option>
+            <option>CX EXCELENCE</option>
+            <option>CX PROTECTION</option>
+          </select>
+        </div>
+        <div class="col-span-full"><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Keterangan</label><textarea name="keterangan" class="form-input mt-1"></textarea></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
+            <select name="status" class="form-select mt-1">
+                <option value="DIPAKAI" selected>DIPAKAI</option>
+                <option value="TERSEDIA">TERSEDIA</option>
+                <option value="RUSAK">RUSAK</option>
+            </select>
+        </div>
+      </div>
+    `,
+        Headset: `
+      <div class="form-grid">
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Nama</label><input type="text" name="nama" class="form-input mt-1" required></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">NPP</label><input type="text" name="npp" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Nama Onair</label><input type="text" name="namaOnair" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">SN Headset</label><input type="text" name="snHeadset" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Type</label><select name="type" class="form-select mt-1"><option value="">Pilih Type...</option><option>Stereo</option><option>Mono</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Jenis</label><select name="jenis" class="form-select mt-1"><option value="">Pilih Jenis...</option><option>Booster</option><option>USB</option><option>Type-C</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Merek</label>
+            <select name="merek" class="form-select mt-1">
+                <option value="">Pilih Merek...</option>
+                <option>Jabra</option>
+                <option>Jabra Lama</option>
+                <option>Logitech</option>
+                <option>Sennheiser</option>
+            </select>
+        </div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Kondisi</label>
+            <select name="kondisi" class="form-select mt-1">
+                <option value="">Pilih Kondisi...</option>
+                <option>BARU</option>
+                <option>BISA DIPAKAI</option>
+                <option>RUSAK</option>
+            </select>
+        </div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Posisi Jabatan</label><select name="posisiJabatan" class="form-select mt-1"><option value="">Pilih Posisi...</option><option>Assistant Administrasi</option><option>Call Center Officer</option><option>Customer Care</option><option>Team Leader</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Site</label><select name="site" class="form-select mt-1"><option value="">Pilih Site...</option><option>BSD</option><option>SBY</option><option>SMG</option><option>Mangga Dua</option><option>Matraman</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Team Leader</label><input type="text" name="teamLeader" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Senior Staff</label><input type="text" name="seniorStaff" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Section Head</label><input type="text" name="sectionHead" class="form-input mt-1"></div>
+        <div class="col-span-full"><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Layanan</label>
+          <select name="layanan" class="form-select mt-1">
+            <option value="">Pilih Layanan...</option>
+            <option>CCR - RETAIL BANKING</option>
+            <option>CCR - CREDIT CARD</option>
+            <option>CCR - EMERALD & BRANCH</option>
+            <option>CCR - MERCHANT</option>
+            <option>CCR - SAT</option>
+            <option>CCR - T&R</option>
+            <option>CCM - RETAIL BANKING</option>
+            <option>CCM - CREDIT CARD</option>
+            <option>CCM - EMERALD & BRANCH</option>
+            <option>CX DIGITAL</option>
+            <option>CX EXCELENCE</option>
+            <option>CX PROTECTION</option>
+            <option>CX SALES</option>
+          </select>
+        </div>
+        <div class="col-span-full"><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Keterangan</label><textarea name="keterangan" class="form-input mt-1"></textarea></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
+            <select name="status" class="form-select mt-1">
+                <option value="DIPAKAI" selected>DIPAKAI</option>
+                <option value="TERSEDIA">TERSEDIA</option>
+                <option value="RUSAK">RUSAK</option>
+            </select>
+        </div>
+      </div>
+    `,
+        Speaker: `
+      <div class="form-grid">
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Nama</label><input type="text" name="nama" class="form-input mt-1" required></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">QTY</label><input type="number" name="qty" class="form-input mt-1" value="1" required></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Merek</label><select name="merek" class="form-select mt-1" required><option value="">Pilih Merek...</option><option>JABRA</option><option>POLY</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Serial Number</label><input type="text" name="serialNumber" class="form-input mt-1"></div>
+        <div class="col-span-full"><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Keperluan</label><select name="keperluan" class="form-select mt-1"><option value="">Pilih Keperluan...</option><option>ICCA</option><option>Meeting</option><option>Training</option><option>Lain-Lain</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Petugas</label><input type="text" name="petugas" class="form-input mt-1"></div>
+        <div class="col-span-full"><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Keterangan</label><textarea name="keterangan" class="form-input mt-1"></textarea></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label><select name="status" class="form-select mt-1"><option value="DIPAKAI" selected>DIPAKAI</option><option value="TERSEDIA">TERSEDIA</option><option value="RUSAK">RUSAK</option></select></div>
+      </div>
+    `,
+        PC: `
+      <div class="form-grid">
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">IP Address</label><input type="text" name="ipAddress" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Serial Number</label><input type="text" name="serialNumber" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">RAM</label><input type="text" name="ram" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Hostname</label><input type="text" name="hostname" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">NIB PC</label><input type="text" name="nibPc" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Serial Number Monitor</label><input type="text" name="serialNumberMonitor" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">NIB Monitor</label><input type="text" name="nibMonitor" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating System</label><select name="operatingSystem" class="form-select mt-1"><option value="">Pilih OS...</option><option>Windows 7 Pro</option><option>Windows 10 Pro</option><option>Windows 11 Pro</option><option>Windows XP</option><option>Windows Server 2012 R2</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Type PC</label><select name="typePc" class="form-select mt-1"><option value="">Pilih Tipe...</option><option>ACER</option><option>AXIOO</option><option>HP</option><option>LENOVO</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Extension</label><input type="text" name="extension" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">HQ</label><input type="text" name="hq" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Nama</label><input type="text" name="nama" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Layanan</label><select name="layanan" class="form-select mt-1"><option value="">Pilih Layanan...</option><option>CX CALL</option><option>CX DIGITAL</option><option>CX EXCELENCE</option><option>CX MANAJEMENT</option><option>CX PROTECTION</option><option>CX SALES</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Type Keyboard</label><select name="typeKeyboard" class="form-select mt-1"><option value="">Pilih Tipe...</option><option>ACER</option><option>AXIOO</option><option>HP</option><option>LENOVO</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Type Mouse</label><select name="typeMouse" class="form-select mt-1"><option value="">Pilih Tipe...</option><option>ACER</option><option>AXIOO</option><option>HP</option><option>LENOVO</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Lantai</label><select name="lantai" class="form-select mt-1"><option value="">Pilih Lantai...</option><option>Lantai 9</option><option>Lantai 10</option><option>Lantai 11</option><option>Semarang</option><option>Surabaya</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label><select name="status" class="form-select mt-1"><option value="DIPAKAI" selected>DIPAKAI</option><option value="TERSEDIA">TERSEDIA</option><option value="RUSAK">RUSAK</option></select></div>
+      </div>
+    `,
+        RAM: `
+      <div class="form-grid">
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Merk</label>
+            <select name="merk" class="form-select mt-1" required>
+                <option value="">Pilih Merk...</option>
+                <option>ADATA</option><option>APACER</option><option>ASUS</option><option>CORSAIR</option><option>CRUCIAL</option><option>G.SKILL</option><option>HYNIX (SK HYNIX)</option><option>KINGSTON</option><option>MICRON</option><option>PATRIOT</option><option>PNY</option><option>RAMSTA</option><option>SAMSUNG</option><option>SILICON POWER</option><option>TEAMGROUP</option><option>TRANSCEND</option><option>V-GEN</option><option>ZADAK</option>
+            </select>
+        </div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Serial Number (SN)</label><input type="text" name="sn" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Type Ram</label>
+            <select name="typeRam" class="form-select mt-1">
+                <option value="">Pilih Type...</option><option>SODIMM</option><option>LONGDIMM</option>
+            </select>
+        </div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Jenis RAM</label>
+            <select name="jenisRam" class="form-select mt-1">
+                <option value="">Pilih Jenis...</option><option>DDR1</option><option>DDR2</option><option>DDR3</option><option>DDR3L</option><option>DDR4</option><option>DDR5</option>
+            </select>
+        </div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Size (GB)</label>
+            <select name="size" class="form-select mt-1">
+                <option value="">Pilih Size...</option><option>2</option><option>4</option><option>8</option><option>16</option>
+            </select>
+        </div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Tgl Pengadaan</label><input type="date" name="tglPengadaan" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Layanan</label>
+            <select name="layanan" class="form-select mt-1">
+                <option value="">Pilih Layanan...</option><option>CX CALL</option><option>CX DIGITAL</option><option>CX EXCELENCE</option><option>CX MANAJEMENT</option><option>CX PROTECTION</option>
+            </select>
+        </div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Pengguna</label>
+            <select name="pengguna" class="form-select mt-1">
+                <option value="">Pilih Pengguna...</option><option>CREDIT CARD</option><option>EMERALD & BRANCH</option><option>MERCHANT</option><option>RETAIL BANKING</option><option>SAT</option><option>T&R</option>
+            </select>
+        </div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">SN PC</label><input type="text" name="snPc" class="form-input mt-1"></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
+            <select name="status" class="form-select mt-1">
+                <option value="DIPAKAI" selected>DIPAKAI</option>
+                <option value="TERSEDIA">TERSEDIA</option>
+                <option value="RUSAK">RUSAK</option>
+            </select>
+        </div>
+      </div>
+    `
+    };
+</script>

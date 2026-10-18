@@ -1,0 +1,682 @@
+<script>
+    // --- DASHBOARD RENDER LOGIC ---
+
+    function renderMainDashboard(data, elements) {
+        if (!data) return;
+
+        const totalAssetsEl = elements.totalAssetsEl;
+        const totalBorrowedEl = elements.totalBorrowedEl;
+        const totalAvailableEl = elements.totalAvailableEl;
+        const totalDamagedEl = elements.totalDamagedEl;
+        const chartCanvas = elements.chartCanvas;
+        const isDark = document.documentElement.classList.contains('dark');
+
+        let totalAssets = 0;
+        let totalBorrowed = 0;
+        let totalAvailable = 0;
+        let totalDamaged = 0;
+
+        let availableBreakdown = [];
+        let borrowedBreakdown = [];
+        let damagedBreakdown = [];
+
+        // Dynamic custom statuses map: statusKey -> { label, count, breakdown: [ { assetType, count } ] }
+        const customStatusMap = {};
+
+        const chartLabels = [];
+        const chartData = [];
+        const chartColors = ['#60a5fa', '#facc15', '#4ade80', '#f87171', '#c084fc', '#fb923c', '#34d399', '#38bdf8', '#a855f7', '#ec4899', '#14b8a6', '#f59e0b'];
+
+        Object.keys(data).forEach((assetType) => {
+            if (Array.isArray(data[assetType])) {
+                const assets = data[assetType];
+
+                let validAssetCount = 0;
+                let assetBorrowedCount = 0;
+                let assetAvailableCount = 0;
+                let assetDamagedCount = 0;
+                const assetCustomCounts = {};
+
+                assets.forEach(item => {
+                    const rawStatus = String(item.Status || '').trim();
+                    const s = rawStatus.toLowerCase();
+
+                    // Cek jika status adalah DIKEMBALIKAN KE PFA (tidak dihitung dalam total semua aset)
+                    const isPfaReturn = s.includes('dikembalikan ke pfa') || (s.includes('pfa') && s.includes('kembali'));
+
+                    if (!isPfaReturn) {
+                        validAssetCount++;
+                    }
+
+                    if (!rawStatus) return;
+
+                    // Standard categories
+                    if (s === 'dipinjam' || s === 'dipakai' || s === 'speaker dipakai') {
+                        assetBorrowedCount++;
+                    } else if (s === 'tersedia' || s === 'dikembalikan' || s === 'speaker tersedia') {
+                        assetAvailableCount++;
+                    } else if (s === 'rusak') {
+                        assetDamagedCount++;
+                    } else {
+                        // Custom status option detected
+                        const key = rawStatus.toUpperCase();
+                        assetCustomCounts[key] = (assetCustomCounts[key] || 0) + 1;
+
+                        if (!customStatusMap[key]) {
+                            customStatusMap[key] = {
+                                label: rawStatus,
+                                count: 0,
+                                breakdown: []
+                            };
+                        }
+                        customStatusMap[key].count++;
+                    }
+                });
+
+                totalAssets += validAssetCount;
+                totalBorrowed += assetBorrowedCount;
+                totalAvailable += assetAvailableCount;
+                totalDamaged += assetDamagedCount;
+
+                // Create Breakdown Items
+                if (assetBorrowedCount > 0) {
+                    borrowedBreakdown.push(`<div class="flex justify-between text-xs text-gray-600 dark:text-gray-400 mt-1"><span>${assetType}:</span> <span class="font-bold text-gray-800 dark:text-white">${assetBorrowedCount}</span></div>`);
+                }
+                if (assetAvailableCount > 0) {
+                    availableBreakdown.push(`<div class="flex justify-between text-xs text-gray-600 dark:text-gray-400 mt-1"><span>${assetType}:</span> <span class="font-bold text-gray-800 dark:text-white">${assetAvailableCount}</span></div>`);
+                }
+                if (assetDamagedCount > 0) {
+                    damagedBreakdown.push(`<div class="flex justify-between text-xs text-gray-600 dark:text-gray-400 mt-1"><span>${assetType}:</span> <span class="font-bold text-gray-800 dark:text-white">${assetDamagedCount}</span></div>`);
+                }
+
+                Object.keys(assetCustomCounts).forEach(key => {
+                    customStatusMap[key].breakdown.push(`<div class="flex justify-between text-xs text-gray-600 dark:text-gray-400 mt-1"><span>${assetType}:</span> <span class="font-bold text-gray-800 dark:text-white">${assetCustomCounts[key]}</span></div>`);
+                });
+
+                chartLabels.push(assetType);
+                chartData.push(validAssetCount);
+            }
+        });
+
+        if (!totalAssetsEl || !totalBorrowedEl || !totalAvailableEl) {
+            console.error("Elemen stat dashboard utama tidak ditemukan.");
+        } else {
+            totalAssetsEl.textContent = totalAssets;
+
+            // Render Borrowed (Dipakai)
+            totalBorrowedEl.innerHTML = `
+                <div class="text-3xl font-bold text-gray-800 dark:text-white">${totalBorrowed}</div>
+                <div class="mt-2 border-t border-gray-200 dark:border-gray-700 pt-2">
+                    ${borrowedBreakdown.join('')}
+                </div>
+            `;
+
+            // Render Available (Tersedia)
+            totalAvailableEl.innerHTML = `
+                <div class="text-3xl font-bold text-gray-800 dark:text-white">${totalAvailable}</div>
+                <div class="mt-2 border-t border-gray-200 dark:border-gray-700 pt-2">
+                    ${availableBreakdown.join('')}
+                </div>
+            `;
+
+            // Render Damaged (Rusak) check if element exists (since it's new)
+            if (totalDamagedEl) {
+                totalDamagedEl.innerHTML = `
+                    <div class="text-3xl font-bold text-gray-800 dark:text-white">${totalDamaged}</div>
+                    <div class="mt-2 border-t border-gray-200 dark:border-gray-700 pt-2">
+                        ${damagedBreakdown.join('')}
+                    </div>
+                `;
+            }
+
+            // Render Dynamic Cards untuk Pilihan Status Baru ("Aset-Nama pilihan baru")
+            const statsContainer = document.getElementById('main-dashboard-stats');
+            if (statsContainer) {
+                // Hapus card dinamis kustom sebelumnya agar tidak duplikat saat reload
+                statsContainer.querySelectorAll('.dynamic-status-card').forEach(el => el.remove());
+
+                // Palet ikon & warna untuk pilihan status baru
+                const cardPalettes = [
+                    { bg: 'bg-purple-100 dark:bg-purple-900/50', text: 'text-purple-500', icon: 'fa-tags' },
+                    { bg: 'bg-teal-100 dark:bg-teal-900/50', text: 'text-teal-500', icon: 'fa-layer-group' },
+                    { bg: 'bg-indigo-100 dark:bg-indigo-900/50', text: 'text-indigo-500', icon: 'fa-cubes' },
+                    { bg: 'bg-pink-100 dark:bg-pink-900/50', text: 'text-pink-500', icon: 'fa-bookmark' },
+                    { bg: 'bg-orange-100 dark:bg-orange-900/50', text: 'text-orange-500', icon: 'fa-circle-dot' },
+                    { bg: 'bg-cyan-100 dark:bg-cyan-900/50', text: 'text-cyan-500', icon: 'fa-asterisk' }
+                ];
+
+                let paletteIdx = 0;
+                Object.keys(customStatusMap).forEach(key => {
+                    const statusObj = customStatusMap[key];
+                    const p = cardPalettes[paletteIdx % cardPalettes.length];
+                    paletteIdx++;
+
+                    const cardDiv = document.createElement('div');
+                    cardDiv.className = 'bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md flex items-start dynamic-status-card';
+                    cardDiv.innerHTML = `
+                        <div class="w-16 h-16 rounded-full ${p.bg} flex items-center justify-center mr-4 flex-shrink-0">
+                            <i class="fas ${p.icon} text-3xl ${p.text}"></i>
+                        </div>
+                        <div class="w-full">
+                            <p class="text-gray-500 dark:text-gray-400 text-sm font-medium">Aset-${statusObj.label}</p>
+                            <div class="text-3xl font-bold text-gray-800 dark:text-white">${statusObj.count}</div>
+                            <div class="mt-2 border-t border-gray-200 dark:border-gray-700 pt-2">
+                                ${statusObj.breakdown.join('')}
+                            </div>
+                        </div>
+                    `;
+                    statsContainer.appendChild(cardDiv);
+                });
+            }
+        }
+
+        if (mainDashboardChart) {
+            mainDashboardChart.destroy();
+        }
+        if (!chartCanvas) {
+            console.error("Elemen canvas dashboard utama tidak ditemukan.");
+            return;
+        }
+        const hasCustomBg = document.body.classList.contains('has-custom-bg');
+        const axisTextColor = hasCustomBg ? '#f1f5f9' : (isDark ? '#9ca3af' : '#6b7280');
+        const axisGridColor = hasCustomBg ? 'rgba(255, 255, 255, 0.15)' : (isDark ? '#374151' : '#e5e7eb');
+        const chartBorderColor = hasCustomBg ? 'rgba(255, 255, 255, 0.4)' : (isDark ? '#1f2937' : '#fff');
+
+        mainDashboardChart = new Chart(chartCanvas, {
+            type: 'bar',
+            data: {
+                labels: chartLabels,
+                datasets: [{
+                    label: 'Jumlah Aset',
+                    data: chartData,
+                    backgroundColor: chartColors,
+                    borderWidth: 1,
+                    borderColor: chartBorderColor
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { stepSize: 1, color: axisTextColor },
+                        grid: { color: axisGridColor }
+                    },
+                    x: {
+                        ticks: { color: axisTextColor },
+                        grid: { display: false }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: (hasCustomBg || isDark) ? 'rgba(15, 23, 42, 0.9)' : 'rgba(0,0,0,0.8)',
+                        titleColor: '#fff',
+                        bodyColor: '#e2e8f0',
+                        borderColor: hasCustomBg ? 'rgba(255, 255, 255, 0.2)' : (isDark ? '#4b5563' : 'rgba(0,0,0,0.8)'),
+                        borderWidth: 1
+                    }
+                }
+            }
+        });
+    }
+
+    function loadMainDashboard() {
+        const container = document.getElementById('main-dashboard');
+
+        // PERBAIKAN: Cek data lokal terlebih dahulu agar INSTANT
+        if (allData && Object.keys(allData).length > 0) {
+            // Restore HTML struktur dashboard
+            if (typeof originalMainDashboardHtml !== 'undefined') {
+                container.innerHTML = originalMainDashboardHtml;
+            } else {
+                // Fallback jika variabel hilang (sangat jarang)
+                // Kita tidak menimpa dengan spinner, jadi biarkan apa adanya atau reset manual jika perlu
+            }
+
+            const elements = {
+                totalAssetsEl: document.getElementById('total-assets-stat'),
+                totalBorrowedEl: document.getElementById('total-borrowed-stat'),
+                totalAvailableEl: document.getElementById('total-available-stat'),
+                totalDamagedEl: document.getElementById('total-damaged-stat'),
+                chartCanvas: document.getElementById('asset-comparison-chart')
+            };
+
+            renderMainDashboard(allData, elements);
+            return; // Selesai, tidak perlu panggil server
+        }
+
+        // Jika data benar-benar kosong, baru panggil server (Loading State)
+        container.innerHTML = `<div class="text-center p-10"><i class="fas fa-spinner fa-spin text-4xl text-indigo-500"></i><p class="mt-4">Memuat data...</p></div>`;
+        window.google.script.run
+            .withSuccessHandler(serverData => {
+                if (serverData.error) {
+                    showToast('Gagal memuat data: ' + serverData.error, 'error');
+                    container.innerHTML = `<div class="text-center p-10 text-red-500">Gagal memuat data.</div>`;
+                    return;
+                }
+
+                // Use unzipData to handle both Compact and Legacy formats
+                allData = unzipData(serverData);
+                if (typeof applyMenuConfigToAllData === 'function') applyMenuConfigToAllData();
+
+                if (typeof originalMainDashboardHtml !== 'undefined') {
+                    container.innerHTML = originalMainDashboardHtml;
+                } else {
+                    container.innerHTML = document.getElementById('main-dashboard').innerHTML;
+                }
+
+                const elements = {
+                    totalAssetsEl: document.getElementById('total-assets-stat'),
+                    totalBorrowedEl: document.getElementById('total-borrowed-stat'),
+                    totalAvailableEl: document.getElementById('total-available-stat'),
+                    totalDamagedEl: document.getElementById('total-damaged-stat'),
+                    chartCanvas: document.getElementById('asset-comparison-chart')
+                };
+
+                renderMainDashboard(allData, elements);
+            })
+            .withFailureHandler(err => {
+                showToast('Error memuat semua data: ' + err.message, 'error');
+                container.innerHTML = `<div class="text-center p-10 text-red-500">Gagal memuat data.</div>`;
+            })
+            .getAllData();
+    }
+
+    function rerenderDashboard(assetType) {
+        const data = allData[assetType] || [];
+        const container = document.getElementById('dashboard-container');
+        renderDashboard(assetType, data, container);
+    }
+
+    function loadDashboard(assetType, container) {
+        if (!container) return;
+        container.innerHTML = `<div class="text-center p-10"><i class="fas fa-spinner fa-spin text-4xl text-indigo-500"></i><p class="mt-4">Memuat data...</p></div>`;
+
+        Object.values(charts).forEach(chart => chart.destroy());
+        charts = {};
+
+        if (allData[assetType]) {
+            renderDashboard(assetType, allData[assetType], container);
+        } else {
+            window.google.script.run
+                .withSuccessHandler(serverData => {
+                    if (serverData.error) {
+                        showToast('Gagal memuat data: ' + serverData.error, 'error');
+                        container.innerHTML = `<div class="text-center p-10 text-red-500">Gagal memuat data.</div>`;
+                        return;
+                    }
+                    if (!allData) allData = {};
+
+                    // Use unzipData to ensure compatibility
+                    const unzipped = unzipData(serverData);
+
+                    if (unzipped[assetType]) {
+                        allData[assetType] = unzipped[assetType];
+                    }
+                    if (typeof applyMenuConfigToAllData === 'function') applyMenuConfigToAllData();
+
+                    renderDashboard(assetType, allData[assetType] || [], container);
+                })
+                .withFailureHandler(err => {
+                    showToast('Error memuat data ' + assetType + ': ' + err.message, 'error');
+                    container.innerHTML = `<div class="text-center p-10 text-red-500">Gagal memuat data.</div>`;
+                })
+                .getDataFor(assetType);
+        }
+    }
+
+    function renderDashboard(assetType, data, container) {
+        if (!container) return;
+
+        const activeElement = document.activeElement;
+        const isSearchFocused = activeElement && activeElement.matches('.dashboard-view input[type="text"]');
+        const selectionStart = isSearchFocused ? activeElement.selectionStart : 0;
+
+        if (!currentDashboardStates[assetType]) {
+            currentDashboardStates[assetType] = { 
+                currentPage: 1, 
+                rowsPerPage: 10, 
+                searchTerm: '', 
+                statusFilter: 'all',
+                pegawaiFilter: '',
+                headsetFilter: '',
+                kondisiFilter: 'all',
+                columnFilters: {}
+            };
+        }
+
+        const state = currentDashboardStates[assetType];
+        
+        // Populate columnWidths for renderers
+        if (allData && allData[assetType] && allData[assetType].columnWidths) {
+            state.columnWidths = allData[assetType].columnWidths;
+        } else {
+            state.columnWidths = {};
+        }
+
+        state.columnFilters = state.columnFilters || {};
+
+        // Safety: Pastikan data adalah array
+        const rows = Array.isArray(data) ? data : (data && Array.isArray(data.rows) ? data.rows : []);
+
+        const filteredData = rows.filter(item => {
+            const searchMatch = Object.values(item).some(val =>
+                String(val).toLowerCase().includes(state.searchTerm.toLowerCase())
+            );
+
+            let statusMatch = (state.statusFilter === 'all' || !item.Status);
+            if (!statusMatch) {
+                const itemStatus = String(item.Status || '').toLowerCase();
+                const filterStatus = String(state.statusFilter || '').toLowerCase();
+                if (assetType === 'Tablet' || assetType === 'Laptop') {
+                    if (filterStatus === 'dipakai') {
+                        statusMatch = itemStatus === 'dipakai' || itemStatus === 'dipinjam';
+                    } else if (filterStatus === 'tersedia') {
+                        statusMatch = itemStatus === 'tersedia' || itemStatus === 'dikembalikan';
+                    } else {
+                        statusMatch = itemStatus === filterStatus;
+                    }
+                } else {
+                    statusMatch = itemStatus === filterStatus;
+                }
+            }
+            let customMatch = true;
+            if (assetType === 'Headset' || assetType.toLowerCase() === 'headset') {
+                if (state.pegawaiFilter) {
+                    const pegData = [item['Nama'], item['NPP'], item['Nama Onair'], item['Site']].join(' ').toLowerCase();
+                    if (!pegData.includes(state.pegawaiFilter.toLowerCase())) customMatch = false;
+                }
+                if (customMatch && state.headsetFilter) {
+                    const headData = [item['Merek'], item['SN Headset'], item['Type'], item['Jenis']].join(' ').toLowerCase();
+                    if (!headData.includes(state.headsetFilter.toLowerCase())) customMatch = false;
+                }
+                if (customMatch && state.kondisiFilter && state.kondisiFilter !== 'all') {
+                    const itemKondisi = item['Kondisi'] || item['KONDISI'] || item['kondisi'] || '';
+                    if (itemKondisi.toString().toLowerCase() !== state.kondisiFilter.toLowerCase()) {
+                        customMatch = false;
+                    }
+                }
+            }
+            Object.keys(state.columnFilters || {}).forEach(col => {
+                if (!customMatch) return; // skip if already false
+                const filterVal = state.columnFilters[col].toLowerCase().trim();
+                if (filterVal) {
+                    const rawAssetData = allData[assetType];
+                    const fieldsConfig = rawAssetData ? rawAssetData.fieldsConfig : [];
+                    let fieldsToCheck = [col];
+                    
+                    // Cek apakah col ini adalah nama grup
+                    if (fieldsConfig) {
+                            const groupFields = fieldsConfig.filter(f => f.groupName && f.groupName.trim() === col).map(f => f.name);
+                            if (groupFields.length > 0) fieldsToCheck = groupFields;
+                    }
+
+                    let matchInGroup = false;
+                    for (let fName of fieldsToCheck) {
+                        const itemVal = item[fName] ? String(item[fName]).toLowerCase() : '';
+                        if (itemVal.includes(filterVal)) {
+                            matchInGroup = true;
+                            break;
+                        }
+                    }
+                    if (!matchInGroup) {
+                        customMatch = false;
+                    }
+                }
+            });
+
+            return searchMatch && statusMatch && customMatch;
+        });
+
+        state.filteredData = filteredData;
+
+        let finalHtml = '';
+        // Ambil dashboardDesign dari allData[assetType] (array asli), bukan dari filteredData
+        // karena filteredData kehilangan custom property setelah .filter()
+        const rawAssetData = allData[assetType];
+        state.originalData = Array.isArray(rawAssetData) ? rawAssetData : (rawAssetData && Array.isArray(rawAssetData.rows) ? rawAssetData.rows : []);
+        const design = ((rawAssetData && rawAssetData.dashboardDesign) || 'standard').toLowerCase();
+        const typeKey = assetType.toLowerCase();
+
+        if (design === 'pc' || (design === 'standard' && typeKey === 'pc')) {
+            const stats = calculatePcStats(filteredData);
+            finalHtml = generatePcDashboardHtml(filteredData, state, stats, rawAssetData.fieldsConfig);
+            container.innerHTML = `<div class="dashboard-view" data-asset-type="${assetType}">${finalHtml}</div>`;
+            renderPcCharts(stats);
+        } else if (design === 'ram' || (design === 'standard' && typeKey === 'ram')) {
+            const stats = calculateRamStats(filteredData);
+            finalHtml = generateRamDashboardHtml(filteredData, state, stats, rawAssetData.fieldsConfig);
+            container.innerHTML = `<div class="dashboard-view" data-asset-type="${assetType}">${finalHtml}</div>`;
+            renderRamCharts(stats);
+        } else if (design === 'headset' || (design === 'standard' && typeKey === 'headset')) {
+            const stats = calculateNewHeadsetStats(filteredData);
+            finalHtml = generateNewHeadsetDashboardHtml(filteredData, state, stats, rawAssetData.fieldsConfig);
+            container.innerHTML = `<div class="dashboard-view" data-asset-type="${assetType}">${finalHtml}</div>`;
+            renderNewHeadsetCharts(stats);
+        }
+        else if (design === 'laptop' || (design === 'standard' && typeKey === 'laptop')) {
+            const stats = calculateLaptopStats(filteredData);
+            finalHtml = generateLaptopDashboardHtml(filteredData, state, stats, rawAssetData.fieldsConfig);
+            container.innerHTML = `<div class="dashboard-view" data-asset-type="${assetType}">${finalHtml}</div>`;
+            renderLaptopCharts(stats);
+        }
+        else if (design === 'tablet' || (design === 'standard' && typeKey === 'tablet')) {
+            const stats = calculateTabletStats(filteredData);
+            finalHtml = generateTabletDashboardHtml(filteredData, state, stats, rawAssetData.fieldsConfig);
+            container.innerHTML = `<div class="dashboard-view" data-asset-type="${assetType}">${finalHtml}</div>`;
+            renderTabletCharts(stats);
+        }
+        else {
+            // DYNAMIC STANDARD RENDERER (Uses configured 'showInChart' fields)
+            const stats = calculateStandardStats(assetType, filteredData);
+            finalHtml = generateStandardDashboardHtml(assetType, filteredData, state, stats);
+            container.innerHTML = `<div class="dashboard-view" data-asset-type="${assetType}">${finalHtml}</div>`;
+            renderStandardCharts(assetType, stats);
+        }
+
+
+
+        const focusedDatasetFilter = isSearchFocused ? (activeElement.dataset.colFilter || activeElement.dataset.filter) : null;
+
+        if (isSearchFocused) {
+            let newSearchInput;
+            if (focusedDatasetFilter) {
+                newSearchInput = container.querySelector(`input[type="text"][data-col-filter="${focusedDatasetFilter}"], input[type="text"][data-filter="${focusedDatasetFilter}"]`);
+            } else {
+                newSearchInput = container.querySelector('input[type="text"]:not([data-filter]):not([data-col-filter])');
+            }
+            if (newSearchInput) {
+                newSearchInput.focus();
+                newSearchInput.setSelectionRange(selectionStart, selectionStart);
+            }
+        }
+    }
+
+    function setupDashboardInteractions() {
+        const main = document.querySelector('main');
+
+        const getAssetTypeFromContainer = (container) => {
+            return container ? container.dataset.assetType : null;
+        };
+
+        main.addEventListener('input', (e) => {
+            if (e.target.matches('.dashboard-view input[type="text"]')) {
+                const container = e.target.closest('#dashboard-container');
+                if (!container) return;
+                const view = container.querySelector('.dashboard-view');
+                if (!view) return;
+
+                const assetType = getAssetTypeFromContainer(view);
+                if (!assetType) return;
+                const state = currentDashboardStates[assetType];
+                if (!state) return;
+                if (e.target.dataset.colFilter) {
+                    const colName = e.target.dataset.colFilter;
+                    if (!state.columnFilters) state.columnFilters = {};
+                    state.columnFilters[colName] = e.target.value;
+                } else if (e.target.dataset.filter === 'pegawai') {
+                    state.pegawaiFilter = e.target.value;
+                } else if (e.target.dataset.filter === 'headset') {
+                    state.headsetFilter = e.target.value;
+                } else {
+                    state.searchTerm = e.target.value;
+                }
+                state.currentPage = 1;
+                rerenderDashboard(assetType);
+            }
+        });
+
+        main.addEventListener('change', (e) => {
+            if (e.target.matches('.dashboard-view select')) {
+                const container = e.target.closest('#dashboard-container');
+                if (!container) return;
+                const view = container.querySelector('.dashboard-view');
+                if (!view) return;
+
+                const assetType = getAssetTypeFromContainer(view);
+                if (!assetType) return;
+                const state = currentDashboardStates[assetType];
+                if (!state) return;
+                if (e.target.dataset.control === 'rows-per-page') {
+                    state.rowsPerPage = parseInt(e.target.value, 10);
+                }
+                if (e.target.dataset.control === 'status-filter') {
+                    state.statusFilter = e.target.value;
+                }
+                if (e.target.dataset.filter === 'kondisi') {
+                    state.kondisiFilter = e.target.value;
+                }
+                state.currentPage = 1;
+                rerenderDashboard(assetType);
+            }
+        });
+
+        main.addEventListener('click', (e) => {
+            const actionButton = e.target.closest('button[data-action]');
+            if (actionButton) {
+                const container = actionButton.closest('.dashboard-view');
+                if (!container) return;
+
+                const assetType = getAssetTypeFromContainer(container);
+                if (!assetType) return;
+
+                const action = actionButton.dataset.action;
+
+                if (action === 'export-excel') {
+                    handleExportToExcel(assetType, actionButton);
+                    return;
+                }
+
+                if (action === 'export-log-aktivitas') {
+                    handleExportLogAktivitas(assetType, actionButton);
+                    return;
+                }
+
+                if (action === 'import-excel') {
+                    window.currentImportAssetType = assetType;
+                    const fileInput = document.getElementById('import-file');
+                    if (fileInput) {
+                        fileInput.value = '';
+                        fileInput.click();
+                    } else {
+                        showToast('Input file tidak ditemukan.', 'error');
+                    }
+                    return;
+                }
+
+                const id = actionButton.dataset.id;
+                if (!id) return;
+
+                const dispatchAction = (act, rec) => {
+                    if (act === 'delete') {
+                        handleDeleteAction(assetType, id, currentUser);
+                    } else if (act === 'view') {
+                        handleViewAction(assetType, rec);
+                    } else if (act === 'edit') {
+                        handleEditAction(assetType, rec);
+                    } else if (act === 'edit-date') {
+                        const targetField = actionButton.dataset.field;
+                        handleEditDateAction(assetType, rec, targetField);
+                    }
+                };
+
+                // Safety: allData[assetType] bisa berupa array biasa ATAU objek {rows:[...], config:[], ...}
+                const assetRows = Array.isArray(allData[assetType])
+                    ? allData[assetType]
+                    : (allData[assetType] && Array.isArray(allData[assetType].rows) ? allData[assetType].rows : []);
+                // Gunakan String() agar perbandingan tidak gagal akibat type mismatch
+                // (id dari data-id HTML selalu string, item.ID dari Sheets bisa number)
+                const record = assetRows.find(item => String(item.ID) === String(id));
+
+                if (record) {
+                    // Data sudah ada di cache — langsung jalankan aksi
+                    dispatchAction(action, record);
+                } else {
+                    // Data belum ada / cache kosong — fetch dari server dulu
+                    showToast('Memuat data aset...', 'info');
+                    actionButton.disabled = true;
+                    window.google.script.run
+                        .withSuccessHandler(serverData => {
+                            actionButton.disabled = false;
+                            if (!serverData || serverData.error) {
+                                showToast('Gagal memuat data aset.', 'error');
+                                return;
+                            }
+                            // Simpan ke allData dan cache
+                            const unzipFn = typeof unzipData === 'function' ? unzipData : (d => d);
+                            const unzipped = unzipFn(serverData);
+                            if (unzipped[assetType]) {
+                                allData[assetType] = unzipped[assetType];
+                            }
+                            if (typeof applyMenuConfigToAllData === 'function') applyMenuConfigToAllData();
+                            // Coba lagi cari record
+                            const freshRows = Array.isArray(allData[assetType])
+                                ? allData[assetType]
+                                : (allData[assetType] && Array.isArray(allData[assetType].rows) ? allData[assetType].rows : []);
+                            // Gunakan String() agar konsisten dengan logika pencarian utama
+                            const freshRecord = freshRows.find(item => String(item.ID) === String(id));
+                            if (freshRecord) {
+                                dispatchAction(action, freshRecord);
+                            } else {
+                                showToast('Data aset tidak ditemukan.', 'warning');
+                            }
+                        })
+                        .withFailureHandler(err => {
+                            actionButton.disabled = false;
+                            showToast('Error memuat data: ' + err.message, 'error');
+                        })
+                        .getAllData();
+                } // end: else (record not found in cache)
+
+            } // end: if (actionButton)
+
+            if (e.target.matches('.dashboard-view button[data-control]')) {
+                const container = e.target.closest('#dashboard-container');
+                if (!container) return;
+                const view = container.querySelector('.dashboard-view');
+                if (!view) return;
+
+                const assetType = getAssetTypeFromContainer(view);
+                if (!assetType) return;
+                const state = currentDashboardStates[assetType];
+                if (!state) return;
+                const control = e.target.dataset.control;
+                if (control === 'prev' && state.currentPage > 1) {
+                    state.currentPage--;
+                } else if (control === 'next') {
+                    const totalPages = Math.ceil((state.filteredData || []).length / state.rowsPerPage);
+                    if (state.currentPage < totalPages) {
+                        state.currentPage++;
+                    }
+                }
+                rerenderDashboard(assetType);
+            }
+
+            if (e.target.closest('#scan-qr-button')) {
+                startScanner();
+            }
+        });
+    }
+    </script>

@@ -1,0 +1,1026 @@
+<script>
+    // --- ADMIN LOGIC ---
+
+    function initAdminScripts() {
+        if (!currentUser || currentUser.role !== 'Admin') return; // Only for Admin
+
+        // Event listener for hash change to load data
+        window.addEventListener('hashchange', () => {
+            const hash = window.location.hash;
+            if (hash === '#manage-users') {
+                loadAdminUsers();
+            } else if (hash === '#manage-ui') {
+                loadAdminUI();
+            } else if (hash === '#manage-assets') {
+                loadAdminAssetTypes();
+                const form = document.getElementById('form-manage-assets');
+                if (form) {
+                    form.reset();
+                    const container = document.getElementById('asset-fields-setup-container');
+                    if (container) {
+                        container.innerHTML = '';
+                        // Pre-fill with common fields
+                        addAssetFieldRow('Nama', 'text');
+                        addAssetFieldRow('Merek', 'text');
+                        addAssetFieldRow('Kondisi', 'text');
+                        addAssetFieldRow('Layanan', 'dropdown', 'CX CALL, CX DIGITAL, CX MANAGEMENT, CX PROTECTION, CX EXCELLENCE');
+                        addAssetFieldRow('Lokasi', 'dropdown', 'BSD, SBY, SMG');
+                        addAssetFieldRow('Petugas', 'text');
+                        addAssetFieldRow('Keterangan', 'textarea');
+                        addAssetFieldRow('Status', 'dropdown', 'DIPAKAI, TERSEDIA, RUSAK');
+                    }
+                }
+            }
+        });
+
+        // Load initially if already on the page
+        if (window.location.hash === '#manage-users') loadAdminUsers();
+        if (window.location.hash === '#manage-ui') loadAdminUI();
+
+        // Setup add user button
+        const btnAddUser = document.getElementById('btn-add-user');
+        if (btnAddUser) {
+            btnAddUser.addEventListener('click', () => {
+                showUserModal();
+            });
+        }
+
+        // Setup UI Form
+        const formManageUi = document.getElementById('form-manage-ui');
+        if (formManageUi) {
+            formManageUi.addEventListener('submit', (e) => {
+                e.preventDefault();
+                saveAdminUI();
+            });
+        }
+
+        // Sync color input and text input
+        const colorInput = document.getElementById('ui-primary-color');
+        const colorText = document.getElementById('ui-primary-color-text');
+        if (colorInput && colorText) {
+            colorInput.addEventListener('input', (e) => {
+                colorText.value = e.target.value;
+            });
+            colorText.addEventListener('input', (e) => {
+                // simple hex validation
+                if (/^#[0-9A-F]{6}$/i.test(e.target.value)) {
+                    colorInput.value = e.target.value;
+                }
+            });
+        }
+
+        // Setup Background Image Input & Remove Button
+        const bgFileInput = document.getElementById('ui-bg-image-file');
+        const previewContainer = document.getElementById('ui-bg-preview-container');
+        const previewImg = document.getElementById('ui-bg-preview-img');
+        const statusText = document.getElementById('ui-bg-status-text');
+        const btnRemoveBg = document.getElementById('btn-remove-bg-image');
+
+        if (bgFileInput) {
+            bgFileInput.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                if (!file.type.startsWith('image/')) {
+                    showToast('Harap pilih file gambar (JPG, PNG, WebP).', 'warning');
+                    bgFileInput.value = '';
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const maxDim = 1920;
+                        let w = img.width;
+                        let h = img.height;
+                        if (w > maxDim || h > maxDim) {
+                            if (w > h) {
+                                h = Math.round((h * maxDim) / w);
+                                w = maxDim;
+                            } else {
+                                w = Math.round((w * maxDim) / h);
+                                h = maxDim;
+                            }
+                        }
+                        const canvas = document.createElement('canvas');
+                        canvas.width = w;
+                        canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, w, h);
+                        const mime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+                        const compressedBase64 = canvas.toDataURL(mime, 0.85);
+
+                        pendingBgImageFile = {
+                            base64: compressedBase64,
+                            fileName: file.name,
+                            mimeType: mime
+                        };
+                        removeBgImageRequested = false;
+
+                        if (previewImg) previewImg.src = compressedBase64;
+                        if (statusText) statusText.textContent = 'Gambar baru dipilih: ' + file.name + ' (Klik simpan untuk menerapkan)';
+                        if (previewContainer) previewContainer.classList.remove('hidden');
+                    };
+                    img.src = evt.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        if (btnRemoveBg) {
+            btnRemoveBg.addEventListener('click', function() {
+                removeBgImageRequested = true;
+                pendingBgImageFile = null;
+                if (bgFileInput) bgFileInput.value = '';
+                if (previewContainer) previewContainer.classList.add('hidden');
+                showToast('Background akan dihapus dan dikembalikan ke default saat peraturan disimpan.', 'info');
+            });
+        }
+
+        // Setup Assets Form
+        const btnAddField = document.getElementById('btn-add-field-row');
+        if (btnAddField) {
+            btnAddField.onclick = () => addAssetFieldRow();
+        }
+
+        const formManageAssets = document.getElementById('form-manage-assets');
+        if (formManageAssets) {
+            formManageAssets.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const inputName = document.getElementById('new-asset-type-name').value.trim();
+                const dashboardDesign = document.getElementById('new-asset-dashboard-design').value;
+                if (!inputName) return;
+
+                // Collect Field Configurations
+                const fieldRows = document.querySelectorAll('#asset-fields-setup-container > div');
+                const fieldConfigs = [];
+                fieldRows.forEach(row => {
+                    const name = row.querySelector('.field-name').value.trim();
+                    const isStatus = name.toLowerCase() === 'status';
+                    const typeSelect = row.querySelector('.field-type');
+                    const type = isStatus ? 'dropdown' : typeSelect.value;
+                    const options = row.querySelector('.field-options') ? row.querySelector('.field-options').value.trim() : '';
+                    const groupName = row.querySelector('.field-group-name') ? row.querySelector('.field-group-name').value.trim() : '';
+                    const showInChart = row.querySelector('.field-show-chart').checked;
+                    const hiddenInDashboard = row.querySelector('.field-hide-dashboard').checked;
+                    if (name) {
+                        fieldConfigs.push({ name, type, options, groupName, showInChart, hiddenInDashboard });
+                    }
+                });
+
+                if (fieldConfigs.length === 0) {
+                    showToast('Harap tambahkan minimal satu kolom aset.', 'warning');
+                    return;
+                }
+
+                const btn = formManageAssets.querySelector('button[type="submit"]');
+                const originalText = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>' + (btn.dataset.isEditing === "true" ? 'Mengupdate...' : 'Membuat...');
+
+                window.google.script.run
+                    .withSuccessHandler(res => {
+                        // ... (success handler code remains the same)
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-plus mr-2"></i>Buat Jenis Aset';
+                        delete btn.dataset.isEditing;
+                        if (res.success) {
+                            showToast(res.message, 'success');
+                            formManageAssets.reset();
+                            const container = document.getElementById('asset-fields-setup-container');
+                            container.innerHTML = '';
+                            addAssetFieldRow('Nama', 'text');
+                            addAssetFieldRow('Merek', 'text', '', true);
+                            addAssetFieldRow('Kondisi', 'text', '', true);
+                            addAssetFieldRow('Layanan', 'dropdown', 'CX CALL, CX DIGITAL, CX MANAGEMENT, CX PROTECTION, CX EXCELLENCE', true);
+                            addAssetFieldRow('Lokasi', 'dropdown', 'BSD, SBY, SMG', true);
+                            addAssetFieldRow('Petugas', 'text');
+                            addAssetFieldRow('Keterangan', 'textarea');
+                            addAssetFieldRow('Status', 'dropdown', 'DIPAKAI, TERSEDIA, RUSAK', true);
+                            // 1. Fetch LIGHTWEIGHT Menu Data immediately so new asset appears instantly
+                            if (window.google && window.google.script) {
+                                window.google.script.run.withSuccessHandler(menuData => {
+                                    if (menuData && !menuData.error) {
+                                        localStorage.setItem('ASSET_MENU_CACHE', JSON.stringify(menuData));
+                                        for (let type in menuData) {
+                                            if (!allData[type]) allData[type] = [];
+                                            allData[type].dashboardDesign = menuData[type].dashboardDesign;
+                                            allData[type].fieldsConfig = menuData[type].fields;
+                                        }
+                                        if (typeof updateDynamicMenus === 'function') updateDynamicMenus();
+                                    }
+                                }).getAssetTypeMenuData();
+                            }
+
+                            // 2. Fetch fresh heavy data in background
+                            if (window.google && window.google.script) {
+                                window.google.script.run.withSuccessHandler(refreshedData => {
+                                    if (refreshedData && !refreshedData.error) {
+                                        localStorage.setItem('ALL_DATA_CACHE', JSON.stringify(refreshedData));
+                                        if (typeof unzipData === 'function') {
+                                            allData = unzipData(refreshedData);
+                                            if (typeof applyMenuConfigToAllData === 'function') applyMenuConfigToAllData();
+                                            if (typeof updateDynamicMenus === 'function') {
+                                                updateDynamicMenus();
+                                            }
+                                        }
+                                    }
+                                }).getAllData();
+                            }
+                        } else {
+                            showToast(res.message, 'error');
+                        }
+                    })
+                    .withFailureHandler(err => {
+                        btn.disabled = false;
+                        btn.innerHTML = originalText;
+                        showToast('Error Server: ' + err.message, 'error');
+                    })
+                    .saveAssetType(inputName, fieldConfigs, dashboardDesign, currentUser);
+            });
+        }
+    }
+
+    function refreshFieldNumbers() {
+        const rows = document.querySelectorAll('#asset-fields-setup-container > div');
+        rows.forEach((row, index) => {
+            const numEl = row.querySelector('.field-number');
+            if (numEl) numEl.textContent = index + 1;
+
+            // Disable Up on first, Down on last
+            const upBtn = row.querySelector('.move-up-btn');
+            const downBtn = row.querySelector('.move-down-btn');
+            if (upBtn) upBtn.disabled = (index === 0);
+            if (downBtn) downBtn.disabled = (index === rows.length - 1);
+            if (upBtn) upBtn.classList.toggle('opacity-30', index === 0);
+            if (downBtn) downBtn.classList.toggle('opacity-30', index === rows.length - 1);
+        });
+    }
+
+    function moveFieldRow(btn, direction) {
+        const row = btn.closest('.bg-gray-50');
+        const container = document.getElementById('asset-fields-setup-container');
+        if (direction === 'up' && row.previousElementSibling) {
+            container.insertBefore(row, row.previousElementSibling);
+        } else if (direction === 'down' && row.nextElementSibling) {
+            container.insertBefore(row.nextElementSibling, row);
+        }
+        refreshFieldNumbers();
+    }
+
+    function addAssetFieldRow(defaultName = '', defaultType = 'text', defaultOptions = '', defaultShowInChart = false, defaultHiddenInDashboard = false, defaultGroupName = '') {
+        const container = document.getElementById('asset-fields-setup-container');
+        if (!container) return;
+
+        const isStatusCol = defaultName.trim().toLowerCase() === 'status';
+        const actualType = isStatusCol ? 'dropdown' : defaultType;
+        const actualOptions = isStatusCol ? (defaultOptions || 'DIPAKAI, TERSEDIA, RUSAK') : defaultOptions;
+
+        const div = document.createElement('div');
+        div.className = 'flex flex-wrap gap-2 items-center p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg relative border border-gray-200 dark:border-gray-600 transition-all mb-2';
+
+        div.innerHTML = `
+            <div class="flex items-center gap-2 mr-2">
+                <span class="field-number font-bold text-indigo-500 w-5 text-center"></span>
+                <div class="flex flex-col gap-1">
+                    <button type="button" onclick="moveFieldRow(this, 'up')" class="move-up-btn text-[10px] text-gray-400 hover:text-indigo-500"><i class="fas fa-chevron-up"></i></button>
+                    <button type="button" onclick="moveFieldRow(this, 'down')" class="move-down-btn text-[10px] text-gray-400 hover:text-indigo-500"><i class="fas fa-chevron-down"></i></button>
+                </div>
+            </div>
+            <div class="flex-1 min-w-[140px]">
+                <label class="block text-[10px] uppercase font-bold text-gray-500 dark:text-gray-400 mb-1">Nama Kolom ${isStatusCol ? '<span class="text-indigo-500">(Wajib Sistem)</span>' : ''}</label>
+                <input type="text" class="field-name form-input text-sm ${isStatusCol ? 'bg-gray-100 dark:bg-gray-600 cursor-not-allowed font-semibold' : ''}" placeholder="Contoh: Lokasi" value="${defaultName}" ${isStatusCol ? 'readonly' : ''} required>
+            </div>
+            <div class="w-28 sm:w-32">
+                <label class="block text-[10px] uppercase font-bold text-gray-500 dark:text-gray-400 mb-1">Jenis</label>
+                <select class="field-type form-select text-sm bg-white dark:bg-gray-800 ${isStatusCol ? 'bg-gray-100 dark:bg-gray-600 cursor-not-allowed' : ''}" ${isStatusCol ? 'disabled' : ''}>
+                    <option value="text" ${actualType === 'text' ? 'selected' : ''}>Text Input</option>
+                    <option value="number" ${actualType === 'number' ? 'selected' : ''}>Number</option>
+                    <option value="date" ${actualType === 'date' ? 'selected' : ''}>Date</option>
+                    <option value="textarea" ${actualType === 'textarea' ? 'selected' : ''}>Text Area</option>
+                    <option value="dropdown" ${actualType === 'dropdown' ? 'selected' : ''}>Dropdown</option>
+                </select>
+            </div>
+            <div class="flex-1 min-w-[150px] field-options-container ${actualType === 'dropdown' ? '' : 'hidden'}">
+                <label class="block text-[10px] uppercase font-bold text-gray-500 dark:text-gray-400 mb-1">Opsi (Pisah Koma)</label>
+                <input type="text" class="field-options form-input text-sm" placeholder="Tersedia, Dipakai, Rusak" value="${actualOptions}">
+            </div>
+            <div class="flex-1 min-w-[140px]">
+                <label class="block text-[10px] uppercase font-bold text-gray-500 dark:text-gray-400 mb-1">Grup Kolom (Opsional)</label>
+                <input type="text" class="field-group-name form-input text-sm" placeholder="Contoh: DETAIL PC" value="${defaultGroupName || ''}">
+            </div>
+            <div class="flex items-center mt-4 px-1 gap-2">
+                <label class="inline-flex items-center cursor-pointer">
+                    <input type="checkbox" class="field-show-chart hidden peer" ${defaultShowInChart ? 'checked' : ''}>
+                    <div class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-500 bg-white dark:bg-gray-800 peer-checked:bg-indigo-500 peer-checked:border-indigo-500 peer-checked:text-white text-gray-400 transition-all" title="Tampilkan di Grafik">
+                        <i class="fas fa-chart-pie text-xs"></i>
+                    </div>
+                </label>
+                <label class="inline-flex items-center cursor-pointer" title="Tampilkan/Sembunyikan dari Tabel Dashboard">
+                    <input type="checkbox" class="field-hide-dashboard hidden peer" ${defaultHiddenInDashboard ? 'checked' : ''}>
+                    <div class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-500 bg-indigo-50 dark:bg-indigo-900/30 peer-checked:bg-gray-100 dark:peer-checked:bg-gray-700 peer-checked:border-gray-300 peer-checked:text-gray-400 text-indigo-500 transition-all">
+                        <i class="fas fa-eye peer-checked:before:content-['\\f070'] text-xs"></i>
+                    </div>
+                </label>
+            </div>
+            ${isStatusCol ? `
+            <div class="w-8 flex items-center justify-center mt-4 text-gray-400" title="Kolom Status wajib ada dan tidak dapat dihapus">
+                <i class="fas fa-lock text-sm"></i>
+            </div>
+            ` : `
+            <button type="button" onclick="this.parentElement.remove(); refreshFieldNumbers();" class="text-red-500 hover:text-red-700 p-2 transition-colors mt-4">
+                <i class="fas fa-trash-alt"></i>
+            </button>
+            `}
+        `;
+
+        container.appendChild(div);
+        refreshFieldNumbers();
+
+        // Toggle options visibility based on type
+        const typeSelect = div.querySelector('.field-type');
+        const optionsContainer = div.querySelector('.field-options-container');
+        typeSelect.addEventListener('change', () => {
+            if (typeSelect.value === 'dropdown') {
+                optionsContainer.classList.remove('hidden');
+            } else {
+                optionsContainer.classList.add('hidden');
+            }
+        });
+    }
+
+    // ========== MANAGE USERS ==========
+
+    function loadAdminUsers() {
+        const tbody = document.getElementById('table-users-body');
+        if (!tbody) return;
+
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center p-4"><i class="fas fa-spinner fa-spin mr-2"></i>Loading...</td></tr>';
+
+        window.google.script.run
+            .withSuccessHandler(result => {
+                if (result.success) {
+                    renderUsersTable(result.data);
+                } else {
+                    showToast('Gagal memuat pengguna: ' + result.message, 'error');
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center p-4 text-red-500">Gagal memuat data</td></tr>';
+                }
+            })
+            .withFailureHandler(err => {
+                showToast('Error Server: ' + err.message, 'error');
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center p-4 text-red-500">Error server</td></tr>';
+            })
+            .getAdminUsers(currentUser);
+    }
+
+    function renderUsersTable(users) {
+        const tbody = document.getElementById('table-users-body');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+
+        if (!users || users.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center p-4">Belum ada data</td></tr>';
+            return;
+        }
+
+        users.forEach(user => {
+            const tr = document.createElement('tr');
+            tr.className = 'border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors';
+
+            // Protect current user from being deleted or role changed as easily
+            const isSelf = user.username === currentUser.username;
+
+            tr.innerHTML = `
+                <td class="p-4">${user.username} ${isSelf ? '<span class="text-xs text-indigo-500 ml-2">(Anda)</span>' : ''}</td>
+                <td class="p-4">${user.name}</td>
+                <td class="p-4"><span class="px-2 py-1 text-xs font-semibold rounded-full ${user.role === 'Admin' ? 'bg-indigo-100 text-indigo-800' : 'bg-green-100 text-green-800'}">${user.role}</span></td>
+                <td class="p-4 space-x-2">
+                    <button class="text-blue-500 hover:text-blue-700 p-1" onclick='editUser(${JSON.stringify(user)})' title="Edit User"><i class="fas fa-edit"></i></button>
+                    ${!isSelf ? `<button class="text-orange-500 hover:text-orange-700 p-1" onclick="resetSession('${user.username}')" title="Reset Session"><i class="fas fa-user-clock"></i></button>` : ''}
+                    ${!isSelf ? `<button class="text-red-500 hover:text-red-700 p-1" onclick="confirmDeleteUser('${user.username}')" title="Hapus User"><i class="fas fa-trash"></i></button>` : ''}
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function showUserModal(user = null) {
+        const isEdit = !!user;
+        modalTitle.textContent = isEdit ? 'Edit Pengguna' : 'Tambah Pengguna Baru';
+
+        modalBody.innerHTML = `
+            <form id="form-admin-user" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Username ${isEdit ? '(Tidak bisa diubah)' : '* Required'}</label>
+                    <input type="text" id="admin-user-username" class="form-input mt-1" required ${isEdit ? 'readonly disabled' : ''} value="${isEdit ? user.username : ''}">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Nama Lengkap</label>
+                    <input type="text" id="admin-user-name" class="form-input mt-1" value="${isEdit ? user.name : ''}">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Role</label>
+                    <select id="admin-user-role" class="form-select mt-1">
+                        <option value="User" ${isEdit && user.role === 'User' ? 'selected' : ''}>User</option>
+                        <option value="Admin" ${isEdit && user.role === 'Admin' ? 'selected' : ''}>Admin</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Password ${isEdit ? '(Isi jika ingin diubah)' : '* Required'}</label>
+                    <input type="password" id="admin-user-password" class="form-input mt-1" ${!isEdit ? 'required' : ''} placeholder="${!isEdit ? 'Masukkan password' : 'Kosongkan jika tidak ubah password'}">
+                </div>
+                <div class="hidden" id="admin-user-error"></div>
+            </form>
+        `;
+
+        modalFooter.innerHTML = `
+            <button class="btn btn-secondary mr-2" onclick="hideActionModal()">Batal</button>
+            <button class="btn btn-primary" id="btn-save-user">Simpan</button>
+        `;
+
+        showActionModal();
+
+        document.getElementById('btn-save-user').addEventListener('click', () => {
+            const btn = document.getElementById('btn-save-user');
+            const username = document.getElementById('admin-user-username').value.trim();
+            if (!username) return;
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan...';
+
+            const userData = {
+                username: username,
+                name: document.getElementById('admin-user-name').value,
+                role: document.getElementById('admin-user-role').value,
+                password: document.getElementById('admin-user-password').value
+            };
+
+            window.google.script.run
+                .withSuccessHandler(res => {
+                    hideActionModal();
+                    if (res.success) {
+                        showToast(res.message, 'success');
+                        loadAdminUsers();
+                    } else {
+                        showToast(res.message, 'error');
+                    }
+                })
+                .withFailureHandler(err => {
+                    hideActionModal();
+                    showToast('Error Server: ' + err.message, 'error');
+                })
+                .saveAdminUser(userData, currentUser);
+        });
+    }
+
+    function editUser(user) {
+        showUserModal(user);
+    }
+
+    function confirmDeleteUser(username) {
+        document.getElementById('confirm-modal-title').textContent = 'Hapus Pengguna';
+        document.getElementById('confirm-modal-message').textContent = `Apakah Anda yakin ingin menghapus user "${username}"?`;
+
+        const confirmModal = document.getElementById('confirm-modal');
+        confirmModal.classList.add('active');
+
+        const okBtn = document.getElementById('confirm-ok-btn');
+        const cancelBtn = document.getElementById('confirm-cancel-btn');
+
+        // Remove previous listeners using clone
+        const newOkBtn = okBtn.cloneNode(true);
+        okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+        const newCancelBtn = cancelBtn.cloneNode(true);
+        cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+        newCancelBtn.onclick = () => confirmModal.classList.remove('active');
+
+        newOkBtn.onclick = () => {
+            confirmModal.classList.remove('active');
+            newOkBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menghapus...';
+            newOkBtn.disabled = true;
+
+            window.google.script.run
+                .withSuccessHandler(res => {
+                    if (res.success) {
+                        showToast(res.message, 'success');
+                        loadAdminUsers();
+                    } else {
+                        showToast(res.message, 'error');
+                    }
+                })
+                .withFailureHandler(err => {
+                    showToast('Error: ' + err.message, 'error');
+                })
+                .deleteAdminUser(username, currentUser);
+        };
+    }
+
+    function resetSession(username) {
+        showConfirm('Reset Sesi', `Apakah Anda yakin ingin meriset sesi untuk "${username}"? User tersebut akan diminta login kembali.`, 'Ya, Reset')
+            .then(confirmed => {
+                if (confirmed) {
+                    window.google.script.run
+                        .withSuccessHandler(res => {
+                            if (res.success) showToast(res.message, 'success');
+                            else showToast(res.message, 'error');
+                        })
+                        .withFailureHandler(err => showToast(err.message, 'error'))
+                        .resetUserSession(username, currentUser);
+                }
+            });
+    }
+
+    // ========== MANAGE ASSETS (EXISTING) ==========
+
+    function loadAdminAssetTypes() {
+        const tbody = document.getElementById('table-asset-types-body');
+        if (!tbody) return;
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center p-4"><i class="fas fa-spinner fa-spin mr-2"></i>Loading...</td></tr>';
+
+        window.google.script.run
+            .withSuccessHandler(menuData => {
+                // getAssetTypeMenuData() mengembalikan objek langsung (bukan {success, data})
+                if (!menuData || menuData.error) {
+                    tbody.innerHTML = `<tr><td colspan="4" class="text-center p-4 text-red-500">${menuData ? menuData.error : 'Gagal memuat data'}</td></tr>`;
+                } else {
+                    renderAssetTypesTable(menuData);
+                }
+            })
+            .withFailureHandler(err => {
+                tbody.innerHTML = `<tr><td colspan="4" class="text-center p-4 text-red-500">${err.message}</td></tr>`;
+            })
+            .getAssetTypeMenuData();
+    }
+
+    function renderAssetTypesTable(menuData) {
+        const tbody = document.getElementById('table-asset-types-body');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+
+        const types = Object.keys(menuData).sort();
+        if (types.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center p-4">Belum ada jenis aset dibuat.</td></tr>';
+            return;
+        }
+
+        types.forEach(type => {
+            const config = menuData[type];
+            const tr = document.createElement('tr');
+            tr.className = 'border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-sm';
+
+            // Ambil jumlah field dari config yang sudah dikirim backend
+            // Jika fieldCount tersedia di menuData pakai itu, fallback ke allData jika ada
+            let fieldCount = 0;
+            let fieldNamesStr = '-';
+
+            if (config.fields && config.fields.length > 0) {
+                fieldCount = config.fields.length;
+                fieldNamesStr = config.fields.map(f => f.name).join(', ');
+            } else if (allData && allData[type]) {
+                if (allData[type].config && allData[type].config.length > 0) {
+                    fieldCount = allData[type].config.length;
+                    fieldNamesStr = allData[type].config.map(f => f.name).join(', ');
+                } else if (allData[type].headers && allData[type].headers.length > 0) {
+                    const systemEnd = ["Tgl Peminjaman", "Tgl Pengembalian", "Timestamp", "Diubah Oleh", "RowIndex", "SheetName", "ID", "Aksi"];
+                    const customHeaders = allData[type].headers.filter(h => !systemEnd.includes(h));
+                    fieldCount = customHeaders.length;
+                    fieldNamesStr = customHeaders.join(', ');
+                }
+            }
+
+            tr.innerHTML = `
+                <td class="p-4">
+                    <span class="font-bold text-indigo-600 dark:text-indigo-400">${type}</span>
+                </td>
+                <td class="p-4">
+                    <span class="px-2 py-1 text-xs font-mono bg-gray-100 dark:bg-gray-700 rounded">${config.dashboardDesign || 'standard'}</span>
+                </td>
+                <td class="p-4">
+                    <span class="font-semibold" title="${fieldNamesStr}">${fieldCount > 0 ? fieldCount + ' field' : '<span class="text-gray-400">-</span>'}</span>
+                </td>
+                <td class="p-4">
+                    <div class="flex items-center gap-2">
+                        <button class="text-green-500 hover:text-green-700 p-1 rounded hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors" 
+                            onclick="viewAssetType('${type}')" title="Lihat Konfigurasi">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button class="text-blue-500 hover:text-blue-700 p-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors" 
+                            onclick="editAssetType('${type}')" title="Edit Konfigurasi">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" 
+                            onclick="deleteAssetTypeAdmin('${type}')" title="Hapus Jenis Aset">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function ensureStatusInFieldList(fieldsList) {
+        if (!fieldsList) return [{
+            name: 'Status',
+            type: 'dropdown',
+            options: 'DIPAKAI, TERSEDIA, RUSAK',
+            showInChart: true,
+            hiddenInDashboard: false
+        }];
+        const list = Array.isArray(fieldsList) ? [...fieldsList] : [];
+        let hasStatus = false;
+        const normalized = list.map(f => {
+            if (f && f.name && f.name.toLowerCase() === 'status') {
+                hasStatus = true;
+                return {
+                    ...f,
+                    type: 'dropdown',
+                    options: (f.options && String(f.options).trim()) ? f.options : 'DIPAKAI, TERSEDIA, RUSAK'
+                };
+            }
+            return f;
+        });
+        if (!hasStatus) {
+            normalized.push({
+                name: 'Status',
+                type: 'dropdown',
+                options: 'DIPAKAI, TERSEDIA, RUSAK',
+                showInChart: true,
+                hiddenInDashboard: false
+            });
+        }
+        return normalized;
+    }
+
+    function viewAssetType(typeName) {
+        // Cari data config - dari allData (jika sudah dimuat) atau muat ulang
+        const getConfig = () => {
+            if (allData && allData[typeName]) {
+                const existingCfg = allData[typeName].config || allData[typeName].fieldsConfig;
+                if (existingCfg && existingCfg.length > 0) {
+                    return ensureStatusInFieldList(existingCfg);
+                } else if (allData[typeName].headers && allData[typeName].headers.length > 0) {
+                    const systemEnd = ["Tgl Peminjaman", "Tgl Pengembalian", "Timestamp", "Diubah Oleh", "RowIndex", "SheetName", "ID", "Aksi"];
+                    const rawFields = allData[typeName].headers.filter(h => !systemEnd.includes(h)).map(h => ({
+                        name: h,
+                        type: h.toLowerCase() === 'status' ? 'dropdown' : 'text',
+                        options: h.toLowerCase() === 'status' ? 'DIPAKAI, TERSEDIA, RUSAK' : '',
+                        showInChart: false
+                    }));
+                    return ensureStatusInFieldList(rawFields);
+                }
+            }
+            return null;
+        };
+
+        const showViewModal = (fields, design) => {
+            modalTitle.textContent = `Detail Konfigurasi: ${typeName}`;
+
+            if (!fields || fields.length === 0) {
+                modalBody.innerHTML = `
+                    <p class="text-sm text-gray-500 italic">Tidak ada konfigurasi field tersimpan untuk jenis aset ini.</p>
+                    <p class="text-xs text-gray-400 mt-2">Kemungkinan aset ini dibuat sebelum fitur konfigurasi field ditambahkan.</p>
+                `;
+            } else {
+                let rowsHtml = fields.map((f, i) => `
+                    <tr class="border-b dark:border-gray-700 text-sm">
+                        <td class="p-3 text-center text-gray-500">${i + 1}</td>
+                        <td class="p-3 font-semibold text-gray-800 dark:text-gray-200">${f.name}</td>
+                        <td class="p-3">
+                            <span class="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">${f.type || 'text'}</span>
+                        </td>
+                        <td class="p-3 text-xs text-gray-500">${f.options || '-'}</td>
+                        <td class="p-3 text-center">
+                            ${f.showInChart
+                        ? '<i class="fas fa-chart-pie text-indigo-500" title="Ditampilkan di Grafik"></i>'
+                        : '<i class="fas fa-minus text-gray-300"></i>'
+                    }
+                        </td>
+                        <td class="p-3 text-center">
+                            ${f.hiddenInDashboard
+                        ? '<i class="fas fa-eye-slash text-gray-400" title="Disembunyikan di Dashboard"></i>'
+                        : '<i class="fas fa-eye text-indigo-500" title="Ditampilkan di Dashboard"></i>'
+                    }
+                        </td>
+                    </tr>
+                `).join('');
+
+                modalBody.innerHTML = `
+                    <div class="mb-4 flex items-center gap-3">
+                        <span class="text-sm text-gray-600 dark:text-gray-400">Desain Dashboard:</span>
+                        <span class="px-2 py-1 text-xs font-mono bg-gray-100 dark:bg-gray-700 rounded font-semibold">${design || 'standard'}</span>
+                        <span class="text-sm text-gray-600 dark:text-gray-400 ml-4">Jumlah Field:</span>
+                        <span class="font-bold text-indigo-600">${fields.length}</span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead>
+                                <tr class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs uppercase">
+                                    <th class="p-3">#</th>
+                                    <th class="p-3">Nama Kolom (Field)</th>
+                                    <th class="p-3">Jenis</th>
+                                    <th class="p-3">Opsi Dropdown</th>
+                                    <th class="p-3 text-center">Di Grafik</th>
+                                    <th class="p-3 text-center">Di Dashboard</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rowsHtml}</tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            modalFooter.innerHTML = `
+                <button class="btn btn-secondary mr-2" onclick="hideActionModal()">Tutup</button>
+                <button class="btn btn-primary" onclick="hideActionModal(); editAssetType('${typeName}')">
+                    <i class="fas fa-edit mr-1"></i> Edit Konfigurasi
+                </button>
+            `;
+            showActionModal();
+        };
+
+        // Coba ambil dari allData terlebih dahulu
+        const cachedConfig = getConfig();
+        if (cachedConfig !== null) {
+            const design = allData[typeName] ? allData[typeName].dashboardDesign : 'standard';
+            showViewModal(cachedConfig, design);
+            return;
+        }
+
+        // Jika tidak ada di cache, tampilkan pesan
+        modalTitle.textContent = `Detail Konfigurasi: ${typeName}`;
+        modalBody.innerHTML = `<div class="text-center p-4"><i class="fas fa-spinner fa-spin mr-2"></i>Memuat konfigurasi...</div>`;
+        modalFooter.innerHTML = '';
+        showActionModal();
+
+        window.google.script.run
+            .withSuccessHandler(menuData => {
+                if (menuData && !menuData.error && menuData[typeName]) {
+                    const cfg = menuData[typeName];
+                    showViewModal(ensureStatusInFieldList(cfg.fields || []), cfg.dashboardDesign);
+                } else {
+                    modalBody.innerHTML = '<p class="text-red-500 text-sm">Gagal memuat konfigurasi.</p>';
+                }
+            })
+            .withFailureHandler(err => {
+                modalBody.innerHTML = `<p class="text-red-500 text-sm">Error: ${err.message}</p>`;
+            })
+            .getAssetTypeMenuData();
+    }
+
+    function editAssetType(typeName) {
+        // Cari konfigurasi dari allData atau minta reload
+        const tryFillForm = (fields, design) => {
+            document.getElementById('new-asset-type-name').value = typeName;
+            document.getElementById('new-asset-dashboard-design').value = design || 'standard';
+
+            const container = document.getElementById('asset-fields-setup-container');
+            container.innerHTML = '';
+
+            const normalizedFields = ensureStatusInFieldList(fields);
+            normalizedFields.forEach(f => {
+                addAssetFieldRow(f.name, f.type, f.options, f.showInChart, f.hiddenInDashboard, f.groupName);
+            });
+
+            document.getElementById('form-manage-assets').scrollIntoView({ behavior: 'smooth' });
+            
+            const btn = document.querySelector('#form-manage-assets button[type="submit"]');
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-save mr-2"></i>Update Jenis Aset';
+                btn.dataset.isEditing = "true";
+            }
+            showToast(`Memuat konfigurasi ${typeName}`, 'info');
+        };
+
+        // Coba dari allData terlebih dahulu
+        if (allData && allData[typeName]) {
+            const cfg = allData[typeName].config || allData[typeName].fieldsConfig;
+            const hdrs = allData[typeName].headers;
+            
+            if (cfg && cfg.length > 0) {
+                tryFillForm(cfg, allData[typeName].dashboardDesign);
+                return;
+            } else if (hdrs && hdrs.length > 0) {
+                const systemEnd = ["Tgl Peminjaman", "Tgl Pengembalian", "Timestamp", "Diubah Oleh", "RowIndex", "SheetName", "ID", "Aksi"];
+                const fallback = hdrs.filter(h => !systemEnd.includes(h)).map(h => ({
+                    name: h,
+                    type: h.toLowerCase() === 'status' ? 'dropdown' : 'text',
+                    options: h.toLowerCase() === 'status' ? 'DIPAKAI, TERSEDIA, RUSAK' : '',
+                    showInChart: false
+                }));
+                tryFillForm(fallback, allData[typeName].dashboardDesign || 'standard');
+                return;
+            }
+        }
+
+        // Jika tidak ada, ambil dari backend
+        showToast(`Mengambil konfigurasi ${typeName}...`, 'info');
+        window.google.script.run
+            .withSuccessHandler(menuData => {
+                if (menuData && !menuData.error && menuData[typeName]) {
+                    const cfg = menuData[typeName];
+                    tryFillForm(cfg.fields || [], cfg.dashboardDesign);
+                } else {
+                    showToast('Gagal memuat konfigurasi.', 'error');
+                }
+            })
+            .withFailureHandler(err => showToast('Error: ' + err.message, 'error'))
+            .getAssetTypeMenuData();
+    }
+
+    async function deleteAssetTypeAdmin(typeName) {
+        const confirmed = await showConfirm(
+            'Hapus Jenis Aset',
+            `Apakah Anda yakin ingin menghapus jenis aset "${typeName}"?\n\nSEMUA DATA di dalamnya akan terhapus permanen dan tidak dapat dipulihkan!`,
+            'Ya, Hapus Permanen',
+            true
+        );
+
+        if (!confirmed) return;
+
+        showToast(`Menghapus jenis aset "${typeName}"...`, 'info');
+
+        window.google.script.run
+            .withSuccessHandler(res => {
+                if (res.success) {
+                    showToast(res.message, 'success');
+                    // Hapus dari allData lokal jika ada
+                    if (allData && allData[typeName]) delete allData[typeName];
+                    // Muat ulang tabel
+                    loadAdminAssetTypes();
+                    // Perbarui menu dinamis
+                    if (typeof updateDynamicMenus === 'function') updateDynamicMenus();
+                } else {
+                    showToast(res.message, 'error');
+                }
+            })
+            .withFailureHandler(err => {
+                showToast('Error Server: ' + err.message, 'error');
+            })
+            .deleteAssetType(typeName, currentUser);
+    }
+
+    // ========== MANAGE UI ==========
+
+    let currentBgImageUrl = '';
+    let removeBgImageRequested = false;
+    let pendingBgImageFile = null;
+
+    function loadAdminUI() {
+        const colorInput = document.getElementById('ui-primary-color');
+        const colorText = document.getElementById('ui-primary-color-text');
+        const appName = document.getElementById('ui-app-name');
+        const bgFileInput = document.getElementById('ui-bg-image-file');
+        const previewContainer = document.getElementById('ui-bg-preview-container');
+        const previewImg = document.getElementById('ui-bg-preview-img');
+        const statusText = document.getElementById('ui-bg-status-text');
+
+        window.google.script.run
+            .withSuccessHandler(res => {
+                if (res.success && res.data) {
+                    if (colorInput && res.data.primaryColor) {
+                        colorInput.value = res.data.primaryColor;
+                        colorText.value = res.data.primaryColor;
+                    }
+                    if (appName && res.data.appName) {
+                        appName.value = res.data.appName;
+                    }
+
+                    currentBgImageUrl = res.data.bgImageUrl || '';
+                    removeBgImageRequested = false;
+                    pendingBgImageFile = null;
+                    if (bgFileInput) bgFileInput.value = '';
+
+                    if (currentBgImageUrl) {
+                        if (previewImg) previewImg.src = currentBgImageUrl;
+                        if (statusText) statusText.textContent = 'Menggunakan gambar custom saat ini';
+                        if (previewContainer) previewContainer.classList.remove('hidden');
+                    } else {
+                        if (previewContainer) previewContainer.classList.add('hidden');
+                    }
+                }
+            })
+            .getUISettings();
+    }
+
+    function saveAdminUI() {
+        const btn = document.querySelector('#form-manage-ui button[type="submit"]');
+        const originalText = btn.innerHTML;
+        const bgFileInput = document.getElementById('ui-bg-image-file');
+        const previewContainer = document.getElementById('ui-bg-preview-container');
+        const previewImg = document.getElementById('ui-bg-preview-img');
+        const statusText = document.getElementById('ui-bg-status-text');
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan...';
+
+        const settings = {
+            primaryColor: document.getElementById('ui-primary-color').value,
+            appName: document.getElementById('ui-app-name').value,
+            removeBg: removeBgImageRequested,
+            bgImageFile: pendingBgImageFile
+        };
+
+        window.google.script.run
+            .withSuccessHandler(res => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                if (res.success) {
+                    showToast(res.message, 'success');
+                    if (res.bgImageUrl !== undefined) {
+                        settings.bgImageUrl = res.bgImageUrl;
+                        currentBgImageUrl = res.bgImageUrl;
+                        pendingBgImageFile = null;
+                        removeBgImageRequested = false;
+                        if (bgFileInput) bgFileInput.value = '';
+                        if (currentBgImageUrl) {
+                            if (previewImg) previewImg.src = currentBgImageUrl;
+                            if (statusText) statusText.textContent = 'Menggunakan gambar custom saat ini';
+                            if (previewContainer) previewContainer.classList.remove('hidden');
+                        } else {
+                            if (previewContainer) previewContainer.classList.add('hidden');
+                        }
+                    }
+                    applyUISettingsFrontEnd(settings); // apply live
+                } else {
+                    showToast(res.message, 'error');
+                }
+            })
+            .withFailureHandler(err => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                showToast('Error Server: ' + err.message, 'error');
+            })
+            .saveUISettings(settings, currentUser);
+    }
+
+    // Apply settings directly without reload (only for basic things like text)
+    function applyUISettingsFrontEnd(settings) {
+        if (settings.appName) {
+            // Update Title texts
+            document.title = settings.appName;
+            const logoSpan = document.querySelector('header nav .font-bold.text-xl');
+            if (logoSpan) {
+                logoSpan.innerHTML = `<i class="fas fa-boxes-stacked mr-2"></i>${settings.appName}`;
+            }
+        }
+
+        if (settings.primaryColor) {
+            // Apply custom color to primary buttons (simplistic approach for now)
+            document.documentElement.style.setProperty('--primary-color', settings.primaryColor);
+            showToast('Tema warna tersimpan. Muat ulang untuk melihat perubahan penuh!', 'info');
+        }
+
+        if (settings.bgImageUrl !== undefined) {
+            if (settings.bgImageUrl) {
+                document.body.classList.add('has-custom-bg');
+                document.body.style.backgroundImage = `url('${settings.bgImageUrl}')`;
+                document.body.style.backgroundSize = 'cover';
+                document.body.style.backgroundPosition = 'center';
+                document.body.style.backgroundAttachment = 'fixed';
+                document.body.style.backgroundRepeat = 'no-repeat';
+            } else {
+                document.body.classList.remove('has-custom-bg');
+                document.body.style.backgroundImage = '';
+                document.body.style.backgroundSize = '';
+                document.body.style.backgroundPosition = '';
+                document.body.style.backgroundAttachment = '';
+                document.body.style.backgroundRepeat = '';
+            }
+        }
+    }
+
+    // Inisialisasi SortableJS untuk form Konfigurasi Field
+    let fieldsSortable;
+    function initFieldsSortable() {
+        const container = document.getElementById('asset-fields-setup-container');
+        if (container) {
+            if (fieldsSortable) {
+                fieldsSortable.destroy();
+            }
+            if (typeof Sortable !== 'undefined') {
+                fieldsSortable = new Sortable(container, {
+                    animation: 150,
+                    handle: '.move-up-btn, .move-down-btn', // Bisa drag dari tombol panah
+                    onEnd: function (evt) {
+                        updateFieldNumbers();
+                    }
+                });
+            }
+        }
+    }
+    
+    // Panggil init saat elemen tersedia atau setelah add baris
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.addedNodes.length > 0) {
+                if (document.getElementById('asset-fields-setup-container') && !fieldsSortable) {
+                    initFieldsSortable();
+                }
+            }
+        });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+</script>
