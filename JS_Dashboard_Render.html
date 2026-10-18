@@ -235,15 +235,26 @@
                 // Kita tidak menimpa dengan spinner, jadi biarkan apa adanya atau reset manual jika perlu
             }
 
+            // Recreate canvas cleanly to avoid Chart.js reuse / display bugs
+            const chartWrapper = container.querySelector('.chart-container');
+            let freshCanvas = document.getElementById('asset-comparison-chart');
+            if (chartWrapper) {
+                chartWrapper.innerHTML = '<canvas id="asset-comparison-chart"></canvas>';
+                freshCanvas = document.getElementById('asset-comparison-chart');
+            }
+
             const elements = {
                 totalAssetsEl: document.getElementById('total-assets-stat'),
                 totalBorrowedEl: document.getElementById('total-borrowed-stat'),
                 totalAvailableEl: document.getElementById('total-available-stat'),
                 totalDamagedEl: document.getElementById('total-damaged-stat'),
-                chartCanvas: document.getElementById('asset-comparison-chart')
+                chartCanvas: freshCanvas
             };
 
-            renderMainDashboard(allData, elements);
+            // Beri jeda 1 tick agar browser selesai me-render layout DOM sebelum Chart.js membaca lebar/tinggi canvas
+            requestAnimationFrame(() => {
+                renderMainDashboard(allData, elements);
+            });
             return; // Selesai, tidak perlu panggil server
         }
 

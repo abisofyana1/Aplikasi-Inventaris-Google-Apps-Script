@@ -81,8 +81,15 @@ function buildDemo() {
       </div>
   `;
 
-  // Insert after </form> in login-section
-  indexHtml = indexHtml.replace('</form>', '</form>\n' + demoBanner);
+  // 5. Add Live Demo Notice Banner & Quick Login Helper on Login Box (Only in login-form)
+  const targetLoginFormEnd = '</p>\n      </form>';
+  const replacementLoginFormEnd = '</p>\n      </form>\n' + demoBanner;
+  if (indexHtml.includes(targetLoginFormEnd)) {
+    indexHtml = indexHtml.replace(targetLoginFormEnd, replacementLoginFormEnd);
+  } else {
+    indexHtml = indexHtml.replace('id="login-form"', 'id="login-form"');
+    indexHtml = indexHtml.replace('</form>', '</form>\n' + demoBanner);
+  }
 
   // Script to hook the quick login buttons
   const quickLoginScript = `

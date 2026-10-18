@@ -991,25 +991,6 @@
         </p>
       </div>
   
-
-      <!-- Live Demo Quick Fill Login Helper -->
-      <div class="mt-4 p-3 bg-indigo-50 dark:bg-gray-700/60 border border-indigo-200 dark:border-gray-600 rounded-xl text-xs space-y-2">
-        <p class="font-semibold text-indigo-900 dark:text-indigo-200 flex items-center">
-          <i class="fas fa-info-circle mr-1.5 text-indigo-600 dark:text-indigo-400"></i> Akun Dummy Demo:
-        </p>
-        <div class="flex gap-2">
-          <button type="button" id="quick-login-admin" class="flex-1 py-1 px-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-center transition font-medium">
-            Role: Admin
-          </button>
-          <button type="button" id="quick-login-user" class="flex-1 py-1 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-center transition font-medium">
-            Role: User
-          </button>
-        </div>
-        <p class="text-gray-500 dark:text-gray-400 text-[11px] text-center">
-          Admin: <b>admin / admin123</b> &bull; User: <b>user / user123</b>
-        </p>
-      </div>
-  
     </div>
   </div>
 
@@ -5399,15 +5380,26 @@ let groupedDynamicHeadsetFields = [];
                 // Kita tidak menimpa dengan spinner, jadi biarkan apa adanya atau reset manual jika perlu
             }
 
+            // Recreate canvas cleanly to avoid Chart.js reuse / display bugs
+            const chartWrapper = container.querySelector('.chart-container');
+            let freshCanvas = document.getElementById('asset-comparison-chart');
+            if (chartWrapper) {
+                chartWrapper.innerHTML = '<canvas id="asset-comparison-chart"></canvas>';
+                freshCanvas = document.getElementById('asset-comparison-chart');
+            }
+
             const elements = {
                 totalAssetsEl: document.getElementById('total-assets-stat'),
                 totalBorrowedEl: document.getElementById('total-borrowed-stat'),
                 totalAvailableEl: document.getElementById('total-available-stat'),
                 totalDamagedEl: document.getElementById('total-damaged-stat'),
-                chartCanvas: document.getElementById('asset-comparison-chart')
+                chartCanvas: freshCanvas
             };
 
-            renderMainDashboard(allData, elements);
+            // Beri jeda 1 tick agar browser selesai me-render layout DOM sebelum Chart.js membaca lebar/tinggi canvas
+            requestAnimationFrame(() => {
+                renderMainDashboard(allData, elements);
+            });
             return; // Selesai, tidak perlu panggil server
         }
 
@@ -8816,32 +8808,6 @@ let groupedDynamicHeadsetFields = [];
     });
 </script>
 
-
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      var btnAdmin = document.getElementById('quick-login-admin');
-      var btnUser = document.getElementById('quick-login-user');
-      var inputUser = document.getElementById('username');
-      var inputPass = document.getElementById('password');
-      var loginForm = document.getElementById('login-form');
-
-      if (btnAdmin) {
-        btnAdmin.addEventListener('click', function() {
-          inputUser.value = 'admin';
-          inputPass.value = 'admin123';
-          loginForm.dispatchEvent(new Event('submit'));
-        });
-      }
-      if (btnUser) {
-        btnUser.addEventListener('click', function() {
-          inputUser.value = 'user';
-          inputPass.value = 'user123';
-          loginForm.dispatchEvent(new Event('submit'));
-        });
-      }
-    });
-  </script>
-  
 
   <script>
     document.addEventListener('DOMContentLoaded', function() {
