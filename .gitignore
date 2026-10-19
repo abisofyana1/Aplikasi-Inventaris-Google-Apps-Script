@@ -4,6 +4,7 @@ package-lock.json
 
 # Clasp auth & local tokens (penting: jangan bocor ke repo publik)
 .clasprc.json
+.clasp.json
 
 # Temporary scripts & backups
 backup/
