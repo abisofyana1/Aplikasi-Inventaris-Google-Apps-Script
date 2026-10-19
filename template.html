@@ -35,7 +35,7 @@
   </script>
 </head>
 
-<body class="bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
+<body id="app-body" class="bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 min-h-screen <?!= bgImageUrl ? 'has-custom-bg' : '' ?>" style="<?!= bgImageUrl ? 'background-image: url(\'' + bgImageUrl + '\'); background-size: cover; background-position: center; background-attachment: fixed; background-repeat: no-repeat;' : '' ?>">
 
   <!-- Loader -->
   <div id="loader" class="flex items-center justify-center min-h-screen">

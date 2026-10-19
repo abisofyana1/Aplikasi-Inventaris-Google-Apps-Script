@@ -22,8 +22,25 @@ function buildDemo() {
   indexHtml = indexHtml.replace(/<\?=\s*appName\s*(\/\/[^?]*)?\?>/g, 'Inventaris Demo');
   indexHtml = indexHtml.replace(/<\?=\s*appName\s*\|\|\s*'Inventaris'\s*\?>/g, 'Inventaris Demo');
   indexHtml = indexHtml.replace(/<\?=\s*primaryColor\s*\|\|\s*'#4f46e5'\s*\?>/g, '#4f46e5');
-  indexHtml = indexHtml.replace(/<\?!= bgImageUrl \? 'has-custom-bg' : '' \?>/g, '');
-  indexHtml = indexHtml.replace(/<\?!=\s*bgImageUrl\s*\?[\s\S]*?: '' \?>/g, '');
+  
+  // Embed BG-Aplikasi.png as base64 Data URL so it is completely self-contained
+  let bgDataUrl = '';
+  const bgPath = path.join(rootDir, 'BG-Aplikasi.png');
+  if (fs.existsSync(bgPath)) {
+    const bgBase64 = fs.readFileSync(bgPath).toString('base64');
+    bgDataUrl = 'data:image/png;base64,' + bgBase64;
+  }
+
+  if (bgDataUrl) {
+    indexHtml = indexHtml.replace(/<\?!= bgImageUrl \? 'has-custom-bg' : '' \?>/g, 'has-custom-bg');
+    indexHtml = indexHtml.replace(
+      /<\?!=\s*bgImageUrl\s*\?[\s\S]*?: '' \?>/g,
+      "background-image: url('" + bgDataUrl + "'); background-size: cover; background-position: center; background-attachment: fixed; background-repeat: no-repeat;"
+    );
+  } else {
+    indexHtml = indexHtml.replace(/<\?!= bgImageUrl \? 'has-custom-bg' : '' \?>/g, '');
+    indexHtml = indexHtml.replace(/<\?!=\s*bgImageUrl\s*\?[\s\S]*?: '' \?>/g, '');
+  }
 
   // 3. Insert mock-backend.js right before JS_Globals include
   const mockScriptTag = '<script>\n' + mockBackend + '\n</script>\n';
