@@ -8,7 +8,7 @@ function authorizeDrive() {
 }
 
 // ID Spreadsheet Anda dari Google Sheets URL
-const SPREADSHEET_ID = "1NVnYLfFanw3m-CvHhzP8CMjX2-81oA2wV4TGnb7W3xs";
+const SPREADSHEET_ID = "";
 
 // Objek untuk memetakan nama sheet agar mudah dikelola
 const SHEETS = {
